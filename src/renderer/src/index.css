@@ -55,3 +55,22 @@ body {
   @apply rounded-tl-lg border border-bark-700/80 bg-bark-850/85;
 }
 }
+
+/* Descriptions des mods et modpacks (Markdown Modrinth / HTML CurseForge) */
+.prose-terra { color: #e9dccf; font-size: 15px; line-height: 1.7; overflow-wrap: anywhere; }
+.prose-terra h1, .prose-terra h2, .prose-terra h3, .prose-terra h4 { color: #f6e9df; font-weight: 800; line-height: 1.3; margin: 1.4em 0 0.6em; }
+.prose-terra h1 { font-size: 1.8em; } .prose-terra h2 { font-size: 1.45em; } .prose-terra h3 { font-size: 1.2em; }
+.prose-terra > :first-child { margin-top: 0; }
+.prose-terra p, .prose-terra ul, .prose-terra ol, .prose-terra blockquote, .prose-terra table, .prose-terra pre { margin: 0 0 1em; }
+.prose-terra ul { list-style: disc; padding-left: 1.5em; } .prose-terra ol { list-style: decimal; padding-left: 1.5em; }
+.prose-terra li { margin: 0.25em 0; }
+.prose-terra a { color: #f27a29; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.prose-terra img { display: inline-block; max-width: 100%; height: auto; border-radius: 8px; margin: 0.3em 0; }
+.prose-terra blockquote { border-left: 3px solid #e46b1a; padding: 0.3em 1em; color: #c6b4a7; background: rgba(0,0,0,0.2); border-radius: 0 8px 8px 0; }
+.prose-terra code { background: #16110d; padding: 0.15em 0.4em; border-radius: 5px; font-size: 0.9em; }
+.prose-terra pre { background: #16110d; padding: 1em; border-radius: 10px; overflow-x: auto; }
+.prose-terra pre code { background: none; padding: 0; }
+.prose-terra table { border-collapse: collapse; width: 100%; }
+.prose-terra th, .prose-terra td { border: 1px solid #49382b; padding: 0.4em 0.7em; text-align: left; }
+.prose-terra hr { border: 0; border-top: 1px solid #49382b; margin: 1.5em 0; }
+.prose-terra center, .prose-terra [align="center"] { text-align: center; }

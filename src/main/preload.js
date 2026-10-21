@@ -54,6 +54,7 @@ contextBridge.exposeInMainWorld('terra', {
   content: {
     search: (opts) => call('content:search', opts),
     versions: (platform, id) => call('content:versions', platform, id),
+    details: (platform, id) => call('content:details', platform, id),
     install: (project, instanceId) => call('content:install', project, instanceId),
     installModpack: (opts) => call('content:installModpack', opts)
   },

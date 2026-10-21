@@ -133,10 +133,55 @@ function search(opts) {
 async function projectVersions(platform, id) {
   if (platform === 'curseforge') {
     const json = await cf(`/mods/${id}/files?pageSize=50`)
-    return json.data.map((f) => ({ id: f.id, name: f.displayName, gameVersions: releaseOnly(f.gameVersions), loaders: f.gameVersions.map((g) => g.toLowerCase()).filter((g) => LOADER_KEYS.includes(g)) }))
+    return json.data.map((f) => ({ id: f.id, name: f.displayName, date: f.fileDate, channel: ['', 'release', 'beta', 'alpha'][f.releaseType] || 'release', downloads: f.downloadCount, gameVersions: releaseOnly(f.gameVersions), loaders: f.gameVersions.map((g) => g.toLowerCase()).filter((g) => LOADER_KEYS.includes(g)) }))
   }
   const json = await mr(`/project/${id}/version`)
-  return json.map((v) => ({ id: v.id, name: v.name || v.version_number, gameVersions: v.game_versions, loaders: v.loaders }))
+  return json.map((v) => ({ id: v.id, name: v.name || v.version_number, date: v.date_published, channel: v.version_type, downloads: v.downloads, gameVersions: v.game_versions, loaders: v.loaders }))
+}
+
+// Fiche complète d'un projet (page détail dans Découvrir)
+async function projectDetails(platform, id) {
+  if (platform === 'curseforge') {
+    const [{ data: m }, { data: html }] = await Promise.all([cf(`/mods/${id}`), cf(`/mods/${id}/description`)])
+    const type = Object.entries(CF_CLASS).find(([, c]) => c === m.classId)?.[0] || 'mod'
+    return {
+      ...cfHit(m, type),
+      body: html,
+      bodyFormat: 'html',
+      gallery: (m.screenshots || []).map((s) => ({ url: s.url, title: s.title, description: s.description })),
+      categories: (m.categories || []).map((c) => c.name),
+      updated: m.dateModified,
+      followers: null,
+      license: null,
+      links: { site: m.links?.websiteUrl, source: m.links?.sourceUrl, issues: m.links?.issuesUrl, wiki: m.links?.wikiUrl }
+    }
+  }
+  const p = await mr(`/project/${id}`)
+  const team = await mr(`/project/${id}/members`).catch(() => [])
+  const owner = team.find((t) => t.role === 'Owner') || team[0]
+  return {
+    platform: 'modrinth',
+    id: p.id,
+    slug: p.slug,
+    type: p.project_type,
+    title: p.title,
+    description: p.description,
+    author: owner?.user?.username || '',
+    icon: p.icon_url,
+    image: p.gallery?.find((g) => g.featured)?.url || p.gallery?.[0]?.url || null,
+    downloads: p.downloads,
+    followers: p.followers,
+    gameVersion: sortVersions(releaseOnly(p.game_versions || []))[0] || null,
+    loaders: (p.loaders || []).filter((l) => LOADER_KEYS.includes(l)),
+    body: p.body,
+    bodyFormat: 'markdown',
+    gallery: (p.gallery || []).sort((a, b) => a.ordering - b.ordering).map((g) => ({ url: g.url, title: g.title, description: g.description })),
+    categories: p.categories || [],
+    updated: p.updated,
+    license: p.license?.name || p.license?.id || null,
+    links: { site: `https://modrinth.com/${p.project_type}/${p.slug}`, source: p.source_url, issues: p.issues_url, wiki: p.wiki_url, discord: p.discord_url },
+    url: `https://modrinth.com/${p.project_type}/${p.slug}`
+  }
 }
 
 // ---------- Installation dans une instance existante ----------
@@ -327,4 +372,4 @@ async function installCurseforgePack(task, project, versionId, inst, game) {
   return null
 }
 
-module.exports = { search, projectVersions, installToInstance, installModpack, onInstancesChanged }
+module.exports = { search, projectVersions, projectDetails, installToInstance, installModpack, onInstancesChanged }

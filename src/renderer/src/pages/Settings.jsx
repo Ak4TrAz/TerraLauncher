@@ -119,7 +119,8 @@ function JavaTab({ draft, set }) {
 export default function Settings({ settings, onSaved, initialTab = 'general' }) {
   const [tab, setTab] = useState(initialTab)
   const [draft, setDraft] = useState(settings || {})
-  useEffect(() => setDraft(settings || {}), [settings])
+  // Garde les modifications en cours ; seul le réglage des animations s'applique tout de suite
+  useEffect(() => setDraft((d) => ({ ...settings, ...d, animations: settings?.animations })), [settings])
   useEffect(() => setTab(initialTab), [initialTab])
   const set = (changes) => setDraft((d) => ({ ...d, ...changes }))
 
@@ -158,8 +159,8 @@ export default function Settings({ settings, onSaved, initialTab = 'general' }) 
                 <Setting title="Langue" desc="Langue de l’interface.">
                   <Select className="h-11" value="fr" onChange={() => {}} options={[{ value: 'fr', label: 'Français' }]} />
                 </Setting>
-                <Setting title="Animations décoratives" desc="Afficher les feuilles animées.">
-                  <Toggle on={draft.animations !== false} onChange={(v) => set({ animations: v })} />
+                <Setting title="Animations décoratives" desc="Afficher les feuilles d’automne (effet immédiat).">
+                  <Toggle on={draft.animations !== false} onChange={async (v) => { set({ animations: v }); onSaved(await api.settings.update({ animations: v }), true) }} />
                 </Setting>
               </div>
             </Section>

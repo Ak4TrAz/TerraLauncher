@@ -94,7 +94,12 @@ function createMock() {
           hits: json.hits.map((h) => ({ platform: 'modrinth', id: h.project_id, slug: h.slug, type: opts.type, title: h.title, description: h.description, author: h.author, icon: h.icon_url, image: h.featured_gallery || h.gallery?.[0] || null, downloads: h.downloads, gameVersion: h.versions?.filter((v) => /^\d+(\.\d+)+$/.test(v)).pop() || null, loaders: h.categories.filter((c) => ['fabric', 'forge', 'neoforge', 'quilt'].includes(c)), url: `https://modrinth.com/${opts.type}/${h.slug}` }))
         }
       },
-      versions: async (_p, pid) => (await (await fetch(`https://api.modrinth.com/v2/project/${pid}/version`)).json()).map((v) => ({ id: v.id, name: v.name, gameVersions: v.game_versions, loaders: v.loaders })),
+      details: async (_p, pid) => {
+        const p = await (await fetch(`https://api.modrinth.com/v2/project/${pid}`)).json()
+        const team = await (await fetch(`https://api.modrinth.com/v2/project/${pid}/members`)).json().catch(() => [])
+        return { platform: 'modrinth', id: p.id, slug: p.slug, type: p.project_type, title: p.title, description: p.description, author: team[0]?.user?.username || '', icon: p.icon_url, image: p.gallery?.[0]?.url || null, downloads: p.downloads, followers: p.followers, gameVersion: (p.game_versions || []).filter((v) => /^d+(.d+)+$/.test(v)).pop() || null, loaders: (p.loaders || []).filter((l) => ['fabric', 'forge', 'neoforge', 'quilt'].includes(l)), body: p.body, bodyFormat: 'markdown', gallery: (p.gallery || []).map((g) => ({ url: g.url, title: g.title })), categories: p.categories, updated: p.updated, license: p.license?.name, links: { source: p.source_url, issues: p.issues_url, wiki: p.wiki_url, discord: p.discord_url }, url: `https://modrinth.com/${p.project_type}/${p.slug}` }
+      },
+      versions: async (_p, pid) => (await (await fetch(`https://api.modrinth.com/v2/project/${pid}/version`)).json()).map((v) => ({ id: v.id, name: v.name, date: v.date_published, channel: v.version_type, downloads: v.downloads, gameVersions: v.game_versions, loaders: v.loaders })),
       install: async (project) => { fakeDownload(project.title); return null },
       installModpack: async ({ project, name }) => {
         const inst = { id: id(), name: name || project.title, version: project.gameVersion, loader: project.loaders[0] || 'vanilla', banner: 5, profileId: null, imported: [], createdAt: Date.now(), lastPlayed: null }

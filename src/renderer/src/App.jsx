@@ -249,7 +249,7 @@ export default function App() {
 
   return (
     <div className="relative flex h-full flex-col bg-[radial-gradient(ellipse_at_top,_#2b2019_0%,_#1c1612_55%)]">
-      <Leaves animated={settings?.animations !== false} />
+      {settings?.animations !== false && <Leaves />}
       <WindowControls />
       {update?.state === 'ready' && (
         <div className="relative z-40 flex items-center justify-center gap-4 bg-ember-500 px-4 py-2 text-sm font-semibold text-white">
@@ -280,7 +280,7 @@ export default function App() {
               />
             )}
             {tab === 'accounts' && <Accounts accounts={accounts} setAccounts={setAccounts} settings={settings} onBack={() => setTab('library')} onOpenSettings={() => openSettings('connections')} toast={toast} />}
-            {tab === 'settings' && <Settings settings={settings} initialTab={settingsTab} onSaved={(s) => { setSettings(s); toast('Paramètres enregistrés.', 'success') }} />}
+            {tab === 'settings' && <Settings settings={settings} initialTab={settingsTab} onSaved={(s, quiet) => { setSettings(s); if (!quiet) toast('Paramètres enregistrés.', 'success') }} />}
         </motion.div>
       </main>
 
