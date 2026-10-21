@@ -54,7 +54,7 @@ export function Select({ value, onChange, options, icon: Icon, placeholder = 'Ch
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -6 }}
             transition={{ duration: 0.12 }}
-            className="absolute left-0 right-0 top-full z-50 mt-2 max-h-72 overflow-y-auto rounded-tl border border-bark-700 bg-bark-850 p-1.5 shadow-[0_20px_50px_-10px_rgba(0,0,0,0.8)]"
+            className="no-drag absolute left-0 right-0 top-full z-50 mt-2 max-h-72 overflow-y-auto rounded-tl border border-bark-700 bg-bark-850 p-1.5 shadow-[0_20px_50px_-10px_rgba(0,0,0,0.8)]"
           >
             {options.map((o, i) => (
               <button
@@ -88,7 +88,7 @@ export function Modal({ open, onClose, title, icon: Icon, children, footer, widt
   return (
     <AnimatePresence>
       {open && (
-        <motion.div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={onClose}>
+        <motion.div className="no-drag fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={onClose}>
           <motion.div
             className={`panel flex max-h-full w-full ${width} flex-col overflow-hidden bg-bark-900 shadow-2xl`}
             initial={{ opacity: 0, y: 24, scale: 0.97 }}
@@ -158,7 +158,7 @@ export function Menu({ items, children }) {
       <AnimatePresence>
         {open && (
           <motion.div
-            className="absolute bottom-full right-0 z-40 mb-2 min-w-[250px] overflow-hidden rounded-xl border border-bark-700 bg-bark-850 p-1.5 shadow-2xl"
+            className="no-drag absolute bottom-full right-0 z-40 mb-2 min-w-[250px] overflow-hidden rounded-xl border border-bark-700 bg-bark-850 p-1.5 shadow-2xl"
             initial={{ opacity: 0, y: 6, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 6, scale: 0.97 }}

@@ -156,7 +156,7 @@ export default function ProjectPage({ hit, onBack, onInstall }) {
       {tab === 'versions' && <Versions hit={hit} />}
 
       {lightbox != null && detail && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-black/85 p-10" onClick={() => setLightbox(null)}>
+        <div className="no-drag fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-black/85 p-10" onClick={() => setLightbox(null)}>
           <img src={detail.gallery[lightbox].url} className="max-h-[85%] max-w-full rounded-tl shadow-2xl" alt="" />
           {detail.gallery[lightbox].title && <p className="text-lg font-semibold">{detail.gallery[lightbox].title}</p>}
           <button className="absolute right-6 top-6 rounded-full bg-black/60 p-2 text-white hover:bg-black/80"><X className="h-6 w-6" /></button>

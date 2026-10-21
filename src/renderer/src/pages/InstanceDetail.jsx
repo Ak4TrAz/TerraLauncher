@@ -233,7 +233,7 @@ export default function InstanceDetail({ inst, profile, actions, menuItems, onBa
       {tab === 'settings' && <InstanceSettings inst={inst} actions={actions} totalMemory={totalMemory} />}
 
       {shot && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-10" onClick={() => setShot(null)}>
+        <div className="no-drag fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-10" onClick={() => setShot(null)}>
           <img src={shotUrl(inst.id, shot.name)} className="max-h-full max-w-full rounded-tl shadow-2xl" alt="" />
           <button className="absolute right-6 top-6 rounded-full bg-black/60 p-2 text-white hover:bg-black/80"><X className="h-6 w-6" /></button>
         </div>
