@@ -101,14 +101,14 @@ app.whenReady().then(() => {
   handle('app:openDataFolder', () => shell.openPath(dataRoot))
 
   handle('accounts:list', () => auth.list())
-  handle('accounts:login', () => auth.login(settings.raw().msClientId))
+  handle('accounts:login', () => auth.login(settings.msClientId()))
   handle('accounts:cancel', () => auth.cancelLogin())
   handle('accounts:setActive', (uuid) => auth.setActive(uuid))
   handle('accounts:remove', (uuid) => auth.remove(uuid))
 
   content.onInstancesChanged(() => win && !win.isDestroyed() && win.webContents.send('instances:changed'))
   handle('game:launch', async (instanceId) => {
-    const session = await auth.activeSession(settings.raw().msClientId)
+    const session = await auth.activeSession(settings.msClientId())
     return launcher.launch(instanceId, session, settings.raw())
   })
   handle('game:stop', (instanceId) => launcher.stop(instanceId))

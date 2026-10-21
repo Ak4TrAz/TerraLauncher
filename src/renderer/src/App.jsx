@@ -249,7 +249,7 @@ export default function App() {
               <CreateInstance profiles={profiles} itemDefs={itemDefs} onCancel={() => setTab('library')} onCreate={createInstance} onCreateProfile={() => { setTab('profiles'); setProfileModal({ profile: null }) }} />
             )}
             {tab === 'profiles' && <Profiles profiles={profiles} instances={instances} actions={profileActions} />}
-            {tab === 'discover' && <Discover onInstall={setInstalling} onOpenSettings={() => openSettings('connections')} />}
+            {tab === 'discover' && <Discover onInstall={setInstalling} devMode={settings?.devMode} onOpenSettings={() => openSettings('connections')} />}
             {tab === 'accounts' && <Accounts accounts={accounts} setAccounts={setAccounts} settings={settings} onBack={() => setTab('library')} onOpenSettings={() => openSettings('connections')} toast={toast} />}
             {tab === 'settings' && <Settings settings={settings} initialTab={settingsTab} onSaved={(s) => { setSettings(s); toast('Paramètres enregistrés.', 'success') }} />}
           </motion.div>

@@ -39,8 +39,8 @@ async function mr(pathname) {
 }
 
 function cfKey() {
-  const key = settings.getSecret('curseforgeKey')
-  if (!key) throw new Error('Ajoute ta clé d’API CurseForge dans Paramètres → Connexions.')
+  const key = settings.curseforgeKey()
+  if (!key) throw new Error(settings.devMode() ? 'Ajoute ta clé d’API CurseForge dans Paramètres → Connexions.' : 'CurseForge n’est pas disponible dans cette version du launcher.')
   return key
 }
 
@@ -50,7 +50,7 @@ async function cf(pathname, body) {
     headers: { 'x-api-key': cfKey(), Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': UA },
     body: body ? JSON.stringify(body) : undefined
   })
-  if (res.status === 403) throw new Error('CurseForge a refusé la clé d’API (403). Vérifie-la dans Paramètres → Connexions.')
+  if (res.status === 403) throw new Error('CurseForge a refusé la clé d’API (403). ' + (settings.devMode() ? 'Vérifie-la dans Paramètres → Connexions.' : 'Réessaie plus tard.'))
   if (!res.ok) throw new Error(`CurseForge : erreur ${res.status}`)
   return res.json()
 }

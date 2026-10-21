@@ -76,7 +76,7 @@ function ProjectCard({ hit, index, onInstall }) {
   )
 }
 
-export default function Discover({ onInstall, onOpenSettings }) {
+export default function Discover({ onInstall, onOpenSettings, devMode }) {
   const [platform, setPlatform] = useState('modrinth')
   const [type, setType] = useState('modpack')
   const [category, setCategory] = useState(null)
@@ -112,7 +112,7 @@ export default function Discover({ onInstall, onOpenSettings }) {
     } catch (e) { setError(e.message) } finally { setLoading(false) }
   }
 
-  const needsKey = error && /clé d’API/.test(error)
+  const needsKey = devMode && error && /clé d’API/.test(error)
 
   return (
     <div className="space-y-6">

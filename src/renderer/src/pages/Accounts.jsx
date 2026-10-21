@@ -34,7 +34,7 @@ function AccountCard({ acc, onUse, onRemove }) {
 export default function Accounts({ accounts, setAccounts, settings, onBack, onOpenSettings, toast }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
-  const missingId = !settings?.msClientId
+  const missingId = !settings?.hasMsClientId
 
   const login = async () => {
     setBusy(true)
@@ -90,7 +90,7 @@ export default function Accounts({ accounts, setAccounts, settings, onBack, onOp
             <div className="panel flex items-center gap-4 p-5">
               <KeyRound className="h-8 w-8 shrink-0 text-ember-400" />
               <p className="flex-1 text-cream-muted">Pour se connecter, TerraLauncher a besoin de son propre <b className="text-cream">Client ID Microsoft</b> (application Azure). Ajoute-le dans les paramètres.</p>
-              <button className="btn-primary" onClick={onOpenSettings}>Paramètres</button>
+              {settings?.devMode && <button className="btn-primary" onClick={onOpenSettings}>Paramètres</button>}
             </div>
           )}
           {error && (

@@ -1,7 +1,11 @@
 // Paramètres du launcher (settings.json) et secrets chiffrés par Windows (secrets.bin).
 const fs = require('fs')
 const path = require('path')
-const { safeStorage } = require('electron')
+const { safeStorage, app } = require('electron')
+const config = require('./config')
+
+// En développement (npm run dev) l'onglet Connexions permet de remplacer les clés intégrées
+const devMode = () => !app.isPackaged
 
 const DEFAULTS = {
   animations: true,
@@ -25,7 +29,16 @@ function init(root) {
   try { secrets = JSON.parse(safeStorage.decryptString(fs.readFileSync(secretsFile))) } catch {}
 }
 
-const get = () => ({ ...settings, curseforgeKey: secrets.curseforgeKey ? '••••••••' : '' , hasCurseforgeKey: !!secrets.curseforgeKey })
+const msClientId = () => (devMode() && settings.msClientId) || config.MS_CLIENT_ID
+const curseforgeKey = () => (devMode() && secrets.curseforgeKey) || config.buildSecrets().curseforgeKey || ''
+
+const get = () => ({
+  ...settings,
+  devMode: devMode(),
+  hasMsClientId: !!msClientId(),
+  curseforgeKey: secrets.curseforgeKey ? '••••••••' : '',
+  hasCurseforgeKey: !!curseforgeKey()
+})
 
 function update(changes) {
   const { curseforgeKey, ...rest } = changes
@@ -46,4 +59,4 @@ function setSecret(key, value) {
 
 const raw = () => settings
 
-module.exports = { init, get, update, raw, getSecret, setSecret }
+module.exports = { init, get, update, raw, getSecret, setSecret, msClientId, curseforgeKey, devMode }

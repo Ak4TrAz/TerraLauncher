@@ -75,7 +75,7 @@ async function minecraftFromMicrosoft(msAccessToken) {
   const mc = await postJson('https://api.minecraftservices.com/authentication/login_with_xbox', { identityToken: `XBL3.0 x=${uhs};${xsts.json.Token}` })
   if (!mc.res.ok) {
     if (mc.res.status === 403 || /Invalid app registration/i.test(mc.text))
-      throw new Error("Mojang n'a pas encore autorisé ce Client ID à utiliser Minecraft. Demande la validation sur aka.ms/mce-reviewappid (voir Paramètres → Connexions).")
+      throw new Error("Mojang n'a pas encore autorisé TerraLauncher à se connecter à Minecraft (validation en attente). Réessaie plus tard.")
     throw new Error(`Minecraft a refusé la connexion (${mc.res.status}).`)
   }
   const mcToken = mc.json.access_token
@@ -141,7 +141,7 @@ function waitForCode(state) {
 }
 
 async function login(clientId) {
-  if (!clientId) throw new Error('Ajoute d’abord ton Client ID Microsoft dans Paramètres → Connexions.')
+  if (!clientId) throw new Error('Connexion Microsoft non configurée dans cette version du launcher.')
   if (pending) pending.cancel()
 
   const verifier = b64url(crypto.randomBytes(32))

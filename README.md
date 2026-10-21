@@ -25,7 +25,13 @@ npm install
 npm run dev
 ```
 
-Le Client ID Azure et la clé d'API CurseForge se renseignent dans l'application : **Paramètres → Connexions**.
+En développement, l'onglet **Paramètres → Connexions** permet de remplacer le Client ID Microsoft et la clé d'API CurseForge. Cet onglet est masqué dans la version installée.
+
+Pour fabriquer une version distribuée, la clé CurseForge est injectée au moment du build (elle n'est jamais commitée) :
+
+```bash
+CURSEFORGE_API_KEY=... npm run secrets
+```
 
 ## Technologies
 

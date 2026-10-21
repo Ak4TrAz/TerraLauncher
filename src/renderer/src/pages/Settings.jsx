@@ -134,7 +134,7 @@ export default function Settings({ settings, onSaved, initialTab = 'general' }) 
       </div>
 
       <div className="flex gap-2 border-b border-bark-700">
-        {TABS.map((t) => (
+        {TABS.filter((t) => t.key !== 'connections' || settings?.devMode).map((t) => (
           <button key={t.key} onClick={() => setTab(t.key)} className={`-mb-px flex items-center gap-2.5 rounded-t-tl border px-5 py-3 text-[16px] transition ${tab === t.key ? 'border-ember-500 border-b-bark-900 bg-ember-500/10 text-ember-400' : 'border-bark-700 text-cream/80 hover:text-cream'}`}>
             <t.icon className="h-5 w-5" /> {t.label}
           </button>
@@ -208,7 +208,7 @@ export default function Settings({ settings, onSaved, initialTab = 'general' }) 
         </div>
       )}
 
-      {tab === 'connections' && <Connections draft={draft} set={set} />}
+      {tab === 'connections' && settings?.devMode && <Connections draft={draft} set={set} />}
 
       <div className="flex justify-between pb-2">
         <button className="btn-ghost px-6 py-3" onClick={() => setDraft(settings || {})}><RotateCcw className="h-5 w-5" /> Annuler les modifications</button>

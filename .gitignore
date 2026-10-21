@@ -4,3 +4,4 @@ out/
 *.log
 .claude/
 .vite/
+src/main/build-secrets.json

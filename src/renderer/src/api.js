@@ -72,7 +72,7 @@ function createMock() {
       openFolder: desktopOnly
     },
     settings: {
-      get: async () => ({ animations: true, startPage: 'library', msClientId: '', curseforgeKey: '', hasCurseforgeKey: false, ...JSON.parse(localStorage.getItem('mock.settings') || '{}') }),
+      get: async () => ({ devMode: true, hasMsClientId: false, animations: true, startPage: 'library', msClientId: '', curseforgeKey: '', hasCurseforgeKey: false, ...JSON.parse(localStorage.getItem('mock.settings') || '{}') }),
       update: async (changes) => {
         const next = { ...JSON.parse(localStorage.getItem('mock.settings') || '{}'), ...changes }
         if (changes.curseforgeKey) { next.hasCurseforgeKey = true; next.curseforgeKey = '••••••••' }
