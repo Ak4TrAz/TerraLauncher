@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 30">
+  <!-- Logo Quilt : grille 3x3 façon puzzle + losange -->
+  <g stroke="#1d1530" stroke-width="0.6">
+    <rect x="1" y="1" width="8.6" height="8.6" rx="1" fill="#9722ff"/>
+    <rect x="10.7" y="1" width="8.6" height="8.6" rx="1" fill="#dc29dd"/>
+    <rect x="20.4" y="1" width="8.6" height="8.6" rx="1" fill="#27a2fd"/>
+    <rect x="1" y="10.7" width="8.6" height="8.6" rx="1" fill="#dc29dd"/>
+    <rect x="10.7" y="10.7" width="8.6" height="8.6" rx="1" fill="#9722ff"/>
+    <rect x="20.4" y="10.7" width="8.6" height="8.6" rx="1" fill="#6e4ff6"/>
+    <rect x="1" y="20.4" width="8.6" height="8.6" rx="1" fill="#6e4ff6"/>
+    <rect x="10.7" y="20.4" width="8.6" height="8.6" rx="1" fill="#27a2fd"/>
+    <rect x="22" y="22" width="6" height="6" rx="0.8" fill="#c026d3" transform="rotate(45 25 25)"/>
+  </g>
+  <!-- Encoches de puzzle -->
+  <g fill="#1d1530">
+    <circle cx="9.65" cy="5.3" r="1.1"/><circle cx="19.35" cy="5.3" r="1.1"/>
+    <circle cx="5.3" cy="9.65" r="1.1"/><circle cx="15" cy="9.65" r="1.1"/><circle cx="24.7" cy="9.65" r="1.1"/>
+    <circle cx="9.65" cy="15" r="1.1"/><circle cx="19.35" cy="15" r="1.1"/>
+    <circle cx="5.3" cy="19.35" r="1.1"/><circle cx="15" cy="19.35" r="1.1"/>
+    <circle cx="9.65" cy="24.7" r="1.1"/>
+  </g>
+</svg>
