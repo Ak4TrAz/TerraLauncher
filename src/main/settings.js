@@ -6,7 +6,11 @@ const { safeStorage } = require('electron')
 const DEFAULTS = {
   animations: true,
   startPage: 'library',
-  msClientId: ''
+  msClientId: '',
+  memory: 4096,
+  jvmArgs: '',
+  gpu: true,
+  minimizeOnLaunch: true
 }
 
 let file = null

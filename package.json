@@ -11,6 +11,9 @@
     "start": "electron ."
   },
   "dependencies": {
+    "@xmcl/core": "2.15.1",
+    "@xmcl/installer": "6.1.2",
+    "@xmcl/task": "4.1.1",
     "adm-zip": "0.5.16",
     "framer-motion": "11.15.0",
     "lucide-react": "0.468.0",

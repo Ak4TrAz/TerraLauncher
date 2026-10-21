@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Settings as SettingsIcon, Coffee, Gamepad2, PlugZap, Palette, Play, Folder, Eye, Save, RotateCcw, Check, ExternalLink, FolderOpen, Hammer } from 'lucide-react'
+import { Settings as SettingsIcon, Coffee, Gamepad2, PlugZap, Palette, Play, Folder, Eye, Save, RotateCcw, Check, ExternalLink, FolderOpen } from 'lucide-react'
 import { api } from '../api'
 import { Select } from '../components/ui'
 import Banner from '../components/Banner'
@@ -83,6 +83,33 @@ function Connections({ draft, set }) {
   )
 }
 
+// Mémoire vive et arguments Java (Java lui-même est installé automatiquement)
+function JavaTab({ draft, set }) {
+  const [total, setTotal] = useState(16384)
+  useEffect(() => { api.game.totalMemory().then(setTotal).catch(() => {}) }, [])
+  const max = Math.max(2048, Math.floor((total * 0.75) / 512) * 512)
+  const memory = Math.min(Number(draft.memory || 4096), max)
+  const gb = (mb) => `${(mb / 1024).toFixed(mb % 1024 ? 1 : 0)} Go`
+
+  return (
+    <div className="space-y-5">
+      <Section icon={Coffee} title="Mémoire allouée" subtitle="Quantité de RAM donnée à Minecraft.">
+        <div className="mb-3 flex items-baseline justify-between">
+          <span className="text-3xl font-bold text-ember-400">{gb(memory)}</span>
+          <span className="text-sm text-cream-muted">{gb(total)} installés sur ce PC</span>
+        </div>
+        <input type="range" min={1024} max={max} step={512} value={memory} onChange={(e) => set({ memory: Number(e.target.value) })} className="w-full accent-[#e46b1a]" />
+        <p className="mt-3 text-sm text-cream-muted">Conseil : 4 Go en vanilla, 6 à 8 Go pour un gros modpack. Trop de RAM peut provoquer des saccades.</p>
+      </Section>
+      <Section icon={Coffee} title="Java" subtitle="Installé automatiquement par TerraLauncher, dans la version exigée par chaque version de Minecraft.">
+        <Setting title="Arguments Java supplémentaires" desc="Pour les utilisateurs avancés. Laisse vide si tu ne sais pas.">
+          <input className="input h-11 font-mono" placeholder="-XX:+UseG1GC" value={draft.jvmArgs || ''} onChange={(e) => set({ jvmArgs: e.target.value })} />
+        </Setting>
+      </Section>
+    </div>
+  )
+}
+
 export default function Settings({ settings, onSaved, initialTab = 'general' }) {
   const [tab, setTab] = useState(initialTab)
   const [draft, setDraft] = useState(settings || {})
@@ -91,7 +118,7 @@ export default function Settings({ settings, onSaved, initialTab = 'general' }) 
   const set = (changes) => setDraft((d) => ({ ...d, ...changes }))
 
   const save = async () => {
-    const changes = { animations: draft.animations, startPage: draft.startPage, msClientId: draft.msClientId || '' }
+    const changes = { animations: draft.animations, startPage: draft.startPage, msClientId: draft.msClientId || '', memory: draft.memory, jvmArgs: draft.jvmArgs || '', gpu: draft.gpu !== false, minimizeOnLaunch: draft.minimizeOnLaunch !== false }
     if (draft.curseforgeKey !== settings?.curseforgeKey) changes.curseforgeKey = draft.curseforgeKey || ''
     onSaved(await api.settings.update(changes))
   }
@@ -156,11 +183,28 @@ export default function Settings({ settings, onSaved, initialTab = 'general' }) 
         </div>
       )}
 
-      {(tab === 'java' || tab === 'game') && (
-        <div className="panel flex flex-col items-center gap-3 px-6 py-20 text-center">
-          <Hammer className="h-10 w-10 text-ember-400" />
-          <h2 className="text-2xl font-bold">{tab === 'java' ? 'Java et mémoire' : 'Réglages du jeu'}</h2>
-          <p className="max-w-md text-cream-muted">Ces réglages (RAM, version de Java, carte graphique NVIDIA, résolution) arrivent avec le lancement du jeu.</p>
+      {tab === 'java' && <JavaTab draft={draft} set={set} />}
+
+      {tab === 'game' && (
+        <div className="space-y-5">
+          <Section icon={Gamepad2} title="Carte graphique" subtitle="Choisissez la carte utilisée par Minecraft.">
+            <div className="flex items-center gap-6">
+              <div className="flex-1">
+                <div className="font-semibold">Forcer la carte graphique haute performance</div>
+                <div className="text-sm text-cream-muted">Utilise la carte NVIDIA (ou AMD) dédiée au lieu de la puce Intel intégrée. Réglage Windows appliqué au Java du launcher.</div>
+              </div>
+              <Toggle on={draft.gpu !== false} onChange={(v) => set({ gpu: v })} />
+            </div>
+          </Section>
+          <Section icon={Play} title="Au lancement du jeu" subtitle="Comportement de TerraLauncher quand Minecraft démarre.">
+            <div className="flex items-center gap-6">
+              <div className="flex-1">
+                <div className="font-semibold">Réduire le launcher</div>
+                <div className="text-sm text-cream-muted">La fenêtre du launcher se réduit quand le jeu est ouvert.</div>
+              </div>
+              <Toggle on={draft.minimizeOnLaunch !== false} onChange={(v) => set({ minimizeOnLaunch: v })} />
+            </div>
+          </Section>
         </div>
       )}
 

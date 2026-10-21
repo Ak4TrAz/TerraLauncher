@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Search, LayoutGrid, List, ArrowUpDown, Play, MoreVertical, Plus, Clock, FolderOpen, Image, RefreshCw, Save, Trash2, Sparkles, Loader2, AlertTriangle } from 'lucide-react'
+import { Search, LayoutGrid, List, ArrowUpDown, Play, MoreVertical, Plus, Clock, FolderOpen, Image, RefreshCw, Save, Trash2, Sparkles, Loader2, AlertTriangle, Square, Wrench } from 'lucide-react'
 import Banner from '../components/Banner'
 import { Menu, Select, VersionChip, LoaderChip, ProfileChip, CubesIcon } from '../components/ui'
 
@@ -32,6 +32,31 @@ function PageTitle({ onCreate }) {
   )
 }
 
+// Bouton Jouer selon l'état du jeu : prêt, préparation, lancement, en jeu (cliquer arrête)
+const STATE_LABEL = { preparing: 'Préparation…', starting: 'Lancement…', running: 'En jeu' }
+function PlayButton({ inst, actions, size }) {
+  const state = actions.statusOf(inst.id)?.state
+  const busy = state === 'preparing' || state === 'starting'
+  const live = state === 'running' || state === 'starting'
+  const onClick = () => (live ? actions.stop(inst) : !busy && actions.play(inst))
+  const icon = busy ? <Loader2 className="h-5 w-5 animate-spin" /> : live ? <Square className="h-5 w-5 fill-white" /> : <Play className={size === 'hero' ? 'h-6 w-6 fill-white' : 'h-5 w-5 fill-white'} />
+  const color = live ? 'bg-[#2f8a45] hover:bg-[#3aa155] shadow-none' : ''
+  const disabled = inst.installing || (busy && !live)
+  if (size === 'hero') {
+    return (
+      <button className={`btn-primary min-w-[200px] px-8 py-4 text-xl tracking-wide ${color}`} disabled={inst.installing} onClick={onClick} title={live ? 'Arrêter le jeu' : 'Jouer'}>
+        {icon} {state ? STATE_LABEL[state] || 'JOUER' : 'JOUER'}
+      </button>
+    )
+  }
+  const dim = size === 'card' ? 'h-11 w-11' : 'h-10 w-10'
+  return (
+    <button className={`btn-primary ${dim} shrink-0 p-0 ${color}`} disabled={disabled} onClick={onClick} title={live ? 'Arrêter le jeu' : state ? STATE_LABEL[state] : 'Jouer'}>
+      {icon}
+    </button>
+  )
+}
+
 // Bandeau sur l'image pendant l'installation d'un modpack, ou en cas d'échec
 function InstallBadge({ inst }) {
   if (inst.installing) return <span className="chip absolute left-3 top-3 bg-ember-500/90 font-semibold text-white"><Loader2 className="h-4 w-4 animate-spin" /> Installation…</span>
@@ -43,6 +68,7 @@ function instanceMenu(inst, a) {
   return [
     { icon: FolderOpen, label: 'Ouvrir le dossier', onClick: () => a.openFolder(inst) },
     { icon: Image, label: 'Changer la bannière', onClick: () => a.changeBanner(inst) },
+    { icon: Wrench, label: 'Réparer l’instance', onClick: () => a.repair(inst) },
     '-',
     { icon: RefreshCw, label: 'Appliquer un profil…', onClick: () => a.reapply(inst) },
     inst.profileId && { icon: Save, label: 'Enregistrer mes touches dans le profil', onClick: () => a.saveToProfile(inst) },
@@ -77,9 +103,7 @@ function Hero({ inst, profile, actions }) {
             <ProfileChip profile={profile} />
           </div>
         </div>
-        <button className="btn-primary px-10 py-4 text-xl tracking-wide" onClick={() => actions.play(inst)}>
-          <Play className="h-6 w-6 fill-white" /> JOUER
-        </button>
+        <PlayButton inst={inst} actions={actions} size="hero" />
         <Menu items={instanceMenu(inst, actions)}>
           <button className="flex h-[60px] w-12 items-center justify-center rounded-xl bg-black/45 text-white backdrop-blur hover:bg-black/60">
             <MoreVertical className="h-5 w-5" />
@@ -115,9 +139,7 @@ function Card({ inst, profile, actions, index }) {
               <ProfileChip profile={profile} />
             </div>
           </div>
-          <button className="btn-primary h-11 w-11 shrink-0 p-0" onClick={() => actions.play(inst)} title="Jouer">
-            <Play className="h-5 w-5 fill-white" />
-          </button>
+          <PlayButton inst={inst} actions={actions} size="card" />
           <Menu items={instanceMenu(inst, actions)}>
             <button className="flex h-11 w-9 items-center justify-center rounded-xl bg-bark-800 text-orange-50/80 hover:bg-bark-700">
               <MoreVertical className="h-5 w-5" />
@@ -141,7 +163,7 @@ function Row({ inst, profile, actions }) {
         <LoaderChip loader={inst.loader} />
         <ProfileChip profile={profile} />
       </div>
-      <button className="btn-primary h-10 w-10 p-0" onClick={() => actions.play(inst)}><Play className="h-4 w-4 fill-white" /></button>
+      <PlayButton inst={inst} actions={actions} size="row" />
       <Menu items={instanceMenu(inst, actions)}>
         <button className="flex h-10 w-9 items-center justify-center rounded-xl bg-bark-800 hover:bg-bark-700"><MoreVertical className="h-5 w-5" /></button>
       </Menu>

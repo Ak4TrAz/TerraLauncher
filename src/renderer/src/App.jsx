@@ -16,6 +16,7 @@ import { Fox } from './components/Sprites'
 import ProfileModal from './components/ProfileModal'
 import ReapplyModal from './components/ReapplyModal'
 import ConfirmModal from './components/ConfirmModal'
+import CrashModal from './components/CrashModal'
 
 const TABS = [
   { key: 'library', label: 'Bibliothèque', icon: LayoutGrid },
@@ -130,6 +131,8 @@ export default function App() {
   const [reapplying, setReapplying] = useState(null)
   const [confirm, setConfirm] = useState(null)
   const [toasts, setToasts] = useState([])
+  const [gameStatus, setGameStatus] = useState({}) // instanceId -> { state, ... }
+  const [crash, setCrash] = useState(null)
 
   const toast = useCallback((text, kind = 'info') => {
     const id = Math.random()
@@ -151,7 +154,12 @@ export default function App() {
       if (s.startPage) setTab(s.startPage)
     })
     refresh()
-    return api.onInstancesChanged(refresh)
+    const offStatus = api.game.onStatus((status) => {
+      setGameStatus((s) => ({ ...s, [status.instanceId]: status.state === 'stopped' || status.state === 'crashed' ? undefined : status }))
+      if (status.state === 'crashed') setCrash(status)
+    })
+    const offInstances = api.onInstancesChanged(refresh)
+    return () => { offStatus(); offInstances() }
   }, [refresh])
 
   const openSettings = (sub = 'general') => { setSettingsTab(sub); setTab('settings') }
@@ -170,7 +178,21 @@ export default function App() {
 
   const instanceActions = {
     create: () => setTab('create'),
-    play: (inst) => toast(accounts.length ? `Le lancement de « ${inst.name} » est la prochaine étape.` : 'Connecte d’abord un compte Microsoft (en haut à droite).'),
+    statusOf: (id) => gameStatus[id],
+    play: async (inst) => {
+      if (!accounts.some((a) => a.active)) {
+        toast('Connecte d’abord ton compte Microsoft pour jouer.')
+        return setTab('accounts')
+      }
+      try {
+        await api.game.launch(inst.id)
+      } catch (err) {
+        setGameStatus((s) => ({ ...s, [inst.id]: undefined }))
+        toast(err.message, 'error')
+      }
+    },
+    stop: (inst) => api.game.stop(inst.id),
+    repair: run((inst) => api.game.repair(inst.id), (_r, inst) => `« ${inst.name} » a été vérifiée et réparée.`),
     openFolder: run((inst) => api.instances.openFolder(inst.id)),
     changeBanner: run((inst) => api.instances.pickBanner(inst.id)),
     reapply: (inst) => (profiles.length ? setReapplying(inst) : toast("Crée d'abord un profil dans l'onglet Profils.")),
@@ -239,6 +261,7 @@ export default function App() {
       <ProfileModal open={!!profileModal} profile={profileModal?.profile} onClose={() => setProfileModal(null)} onSave={saveProfile} />
       <ReapplyModal instance={reapplying} onClose={() => setReapplying(null)} onApply={reapply} profiles={profiles} itemDefs={itemDefs} />
       <ConfirmModal confirm={confirm} onClose={() => setConfirm(null)} />
+      <CrashModal crash={crash} instance={instances.find((i) => i.id === crash?.instanceId)} onClose={() => setCrash(null)} />
 
       <div className="pointer-events-none fixed bottom-6 left-1/2 z-[60] flex -translate-x-1/2 flex-col items-center gap-2">
         <AnimatePresence>

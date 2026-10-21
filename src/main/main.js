@@ -7,6 +7,7 @@ const downloads = require('./downloads')
 const settings = require('./settings')
 const auth = require('./auth')
 const content = require('./content')
+const launcher = require('./launcher')
 
 const isDev = process.env.VITE_DEV === '1'
 const dataRoot = path.join(app.getPath('appData'), '.terralauncher')
@@ -43,6 +44,12 @@ app.whenReady().then(() => {
   store.init(dataRoot)
   settings.init(dataRoot)
   auth.init(dataRoot)
+  launcher.init(dataRoot, (status) => {
+    if (!win || win.isDestroyed()) return
+    win.webContents.send('game:status', status)
+    win.webContents.send('instances:changed')
+    if (status.state === 'running' && settings.raw().minimizeOnLaunch) win.minimize()
+  })
 
   protocol.handle('terra', (req) => {
     const url = new URL(req.url)
@@ -100,6 +107,14 @@ app.whenReady().then(() => {
   handle('accounts:remove', (uuid) => auth.remove(uuid))
 
   content.onInstancesChanged(() => win && !win.isDestroyed() && win.webContents.send('instances:changed'))
+  handle('game:launch', async (instanceId) => {
+    const session = await auth.activeSession(settings.raw().msClientId)
+    return launcher.launch(instanceId, session, settings.raw())
+  })
+  handle('game:stop', (instanceId) => launcher.stop(instanceId))
+  handle('game:repair', async (instanceId) => { await launcher.prepare(instanceId, { force: true }); return true })
+  handle('system:memory', () => launcher.totalMemoryMb())
+
   handle('content:search', (opts) => content.search(opts))
   handle('content:versions', (platform, id) => content.projectVersions(platform, id))
   handle('content:install', async (project, instanceId) => (await content.installToInstance(project, instanceId)).id)

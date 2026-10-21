@@ -104,6 +104,7 @@ function createMock() {
       }
     },
     onInstancesChanged: () => () => {},
+    game: { launch: desktopOnly, stop: async () => {}, repair: desktopOnly, totalMemory: async () => 16384, onStatus: () => () => {} },
     downloads: {
       list: async () => [...dl],
       clear: async () => { dl = dl.filter((t) => t.status === 'running'); dlEmit() },

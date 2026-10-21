@@ -50,6 +50,17 @@ contextBridge.exposeInMainWorld('terra', {
     install: (project, instanceId) => call('content:install', project, instanceId),
     installModpack: (opts) => call('content:installModpack', opts)
   },
+  game: {
+    launch: (id) => call('game:launch', id),
+    stop: (id) => call('game:stop', id),
+    repair: (id) => call('game:repair', id),
+    totalMemory: () => call('system:memory'),
+    onStatus: (fn) => {
+      const listener = (_e, status) => fn(status)
+      ipcRenderer.on('game:status', listener)
+      return () => ipcRenderer.removeListener('game:status', listener)
+    }
+  },
   onInstancesChanged: (fn) => {
     const listener = () => fn()
     ipcRenderer.on('instances:changed', listener)

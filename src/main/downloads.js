@@ -131,11 +131,19 @@ async function downloadFiles(task, files, concurrency = 6) {
   const worker = async () => {
     while (next < files.length) {
       const f = files[next++]
-      try {
-        await fetchToFile(task, f.url, f.dest, f.sha1)
-      } catch (err) {
-        failed.push({ ...f, error: err.message })
+      // f.urls : miroirs essayés dans l'ordre si le premier échoue
+      const urls = f.urls?.length ? f.urls : [f.url]
+      let lastError = null
+      for (const url of urls) {
+        try {
+          await fetchToFile(task, url, f.dest, f.sha1)
+          lastError = null
+          break
+        } catch (err) {
+          lastError = err
+        }
       }
+      if (lastError) failed.push({ ...f, error: lastError.message })
     }
   }
   await Promise.all(Array.from({ length: Math.min(concurrency, files.length) }, worker))
@@ -174,4 +182,4 @@ function installVersion(root, versionId) {
   return task
 }
 
-module.exports = { onUpdate, list, clearFinished, installVersion, downloadFiles, fetchToFile, start, notify }
+module.exports = { onUpdate, list, clearFinished, installVersion, downloadFiles, fetchToFile, start, begin: newTask, notify }
