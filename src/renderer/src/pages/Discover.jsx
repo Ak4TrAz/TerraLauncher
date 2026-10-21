@@ -76,9 +76,9 @@ function ProjectCard({ hit, index, onInstall }) {
   )
 }
 
-export default function Discover({ onInstall, onOpenSettings, devMode }) {
+export default function Discover({ onInstall, onOpenSettings, devMode, initialType }) {
   const [platform, setPlatform] = useState('modrinth')
-  const [type, setType] = useState('modpack')
+  const [type, setType] = useState(initialType || 'modpack')
   const [category, setCategory] = useState(null)
   const [query, setQuery] = useState('')
   const [results, setResults] = useState({ hits: [], total: 0 })

@@ -80,7 +80,7 @@ function createMock() {
         return next
       }
     },
-    app: { openExternal: async (url) => window.open(url, '_blank'), openDataFolder: desktopOnly },
+    app: { openExternal: async (url) => window.open(url, '_blank'), openDataFolder: desktopOnly, version: async () => 'aperçu', installUpdate: async () => {}, onUpdate: () => () => {} },
     accounts: { list: async () => [], login: desktopOnly, cancel: async () => {}, setActive: async () => [], remove: async () => [] },
     content: {
       search: async (opts) => {
@@ -141,7 +141,13 @@ function createMock() {
         return list.find((i) => i.id === iid)
       },
       saveToProfile: desktopOnly,
-      pickBanner: desktopOnly
+      pickBanner: desktopOnly,
+      files: async (_id, folder) => (folder === 'mods' ? [{ name: 'sodium-fabric-0.5.13.jar', title: 'Sodium', version: '0.5.13', size: 980000, enabled: true }, { name: 'iris-1.7.6.jar.disabled', title: 'Iris', version: '1.7.6', size: 2400000, enabled: false }] : []),
+      toggleMod: async () => {},
+      trashFile: async () => {},
+      openSubfolder: desktopOnly,
+      duplicate: desktopOnly,
+      exportZip: desktopOnly
     }
   }
 }

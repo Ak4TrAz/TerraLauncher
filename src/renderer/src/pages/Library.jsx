@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Search, LayoutGrid, List, ArrowUpDown, Play, MoreVertical, Plus, Clock, FolderOpen, Image, RefreshCw, Save, Trash2, Sparkles, Loader2, AlertTriangle, Square, Wrench } from 'lucide-react'
+import { Search, LayoutGrid, List, ArrowUpDown, Play, MoreVertical, Plus, Clock, FolderOpen, Image, RefreshCw, Save, Trash2, Sparkles, Loader2, AlertTriangle, Wrench, Server, Info } from 'lucide-react'
 import Banner from '../components/Banner'
-import { Menu, Select, VersionChip, LoaderChip, ProfileChip, CubesIcon } from '../components/ui'
+import PlayButton from '../components/PlayButton'
+import { Menu, Select, VersionChip, LoaderChip, ProfileChip, CubesIcon, formatPlayTime } from '../components/ui'
 
 const SORTS = [
   { key: 'lastPlayed', label: 'Dernière utilisation' },
@@ -32,31 +33,6 @@ function PageTitle({ onCreate }) {
   )
 }
 
-// Bouton Jouer selon l'état du jeu : prêt, préparation, lancement, en jeu (cliquer arrête)
-const STATE_LABEL = { preparing: 'Préparation…', starting: 'Lancement…', running: 'En jeu' }
-function PlayButton({ inst, actions, size }) {
-  const state = actions.statusOf(inst.id)?.state
-  const busy = state === 'preparing' || state === 'starting'
-  const live = state === 'running' || state === 'starting'
-  const onClick = () => (live ? actions.stop(inst) : !busy && actions.play(inst))
-  const icon = busy ? <Loader2 className="h-5 w-5 animate-spin" /> : live ? <Square className="h-5 w-5 fill-white" /> : <Play className={size === 'hero' ? 'h-6 w-6 fill-white' : 'h-5 w-5 fill-white'} />
-  const color = live ? 'bg-[#2f8a45] hover:bg-[#3aa155] shadow-none' : ''
-  const disabled = inst.installing || (busy && !live)
-  if (size === 'hero') {
-    return (
-      <button className={`btn-primary min-w-[200px] px-8 py-4 text-xl tracking-wide ${color}`} disabled={inst.installing} onClick={onClick} title={live ? 'Arrêter le jeu' : 'Jouer'}>
-        {icon} {state ? STATE_LABEL[state] || 'JOUER' : 'JOUER'}
-      </button>
-    )
-  }
-  const dim = size === 'card' ? 'h-11 w-11' : 'h-10 w-10'
-  return (
-    <button className={`btn-primary ${dim} shrink-0 p-0 ${color}`} disabled={disabled} onClick={onClick} title={live ? 'Arrêter le jeu' : state ? STATE_LABEL[state] : 'Jouer'}>
-      {icon}
-    </button>
-  )
-}
-
 // Bandeau sur l'image pendant l'installation d'un modpack, ou en cas d'échec
 function InstallBadge({ inst }) {
   if (inst.installing) return <span className="chip absolute left-3 top-3 bg-ember-500/90 font-semibold text-white"><Loader2 className="h-4 w-4 animate-spin" /> Installation…</span>
@@ -64,8 +40,11 @@ function InstallBadge({ inst }) {
   return null
 }
 
-function instanceMenu(inst, a) {
+export function instanceMenu(inst, a) {
   return [
+    { icon: Info, label: 'Détails de l’instance', onClick: () => a.open(inst) },
+    { icon: Server, label: 'Rejoindre Terranova', onClick: () => a.join(inst) },
+    '-',
     { icon: FolderOpen, label: 'Ouvrir le dossier', onClick: () => a.openFolder(inst) },
     { icon: Image, label: 'Changer la bannière', onClick: () => a.changeBanner(inst) },
     { icon: Wrench, label: 'Réparer l’instance', onClick: () => a.repair(inst) },
@@ -92,11 +71,11 @@ function Hero({ inst, profile, actions }) {
         </span>
       )}
       <div className="absolute inset-x-5 bottom-5 flex items-end gap-5">
-        <div className="h-[110px] w-[110px] shrink-0 overflow-hidden rounded-xl border-[3px] border-white/85 shadow-xl">
+        <div className="h-[110px] w-[110px] shrink-0 cursor-pointer overflow-hidden rounded-xl border-[3px] border-white/85 shadow-xl" onClick={() => actions.open(inst)}>
           <Banner instance={inst} />
         </div>
         <div className="min-w-0 flex-1 pb-1">
-          <h2 className="mb-3 truncate text-3xl font-extrabold drop-shadow">{inst.name}</h2>
+          <h2 className="mb-3 cursor-pointer truncate text-3xl font-extrabold drop-shadow hover:underline" onClick={() => actions.open(inst)}>{inst.name}</h2>
           <div className="flex flex-wrap gap-2">
             <VersionChip version={inst.version} />
             <LoaderChip loader={inst.loader} />
@@ -123,7 +102,7 @@ function Card({ inst, profile, actions, index }) {
       transition={{ delay: index * 0.04 }}
       className="group overflow-hidden rounded-2xl border border-bark-700/80 bg-bark-900/90 transition hover:-translate-y-1 hover:border-ember-500/40 hover:shadow-[0_16px_40px_-16px_rgba(240,122,30,0.35)]"
     >
-      <div className="relative h-[170px] overflow-hidden">
+      <div className="relative h-[170px] cursor-pointer overflow-hidden" onClick={() => actions.open(inst)}>
         <div className="h-full w-full transition duration-500 group-hover:scale-105">
           <Banner instance={inst} />
         </div>
@@ -132,7 +111,8 @@ function Card({ inst, profile, actions, index }) {
       <div className="p-4">
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
-            <h3 className="mb-2.5 truncate text-xl font-bold">{inst.name}</h3>
+            <h3 className="mb-2.5 cursor-pointer truncate text-xl font-bold hover:underline" onClick={() => actions.open(inst)}>{inst.name}</h3>
+            {inst.playTime > 0 && <p className="-mt-1.5 mb-2 text-xs text-cream-muted">{formatPlayTime(inst.playTime)} de jeu</p>}
             <div className="flex flex-wrap gap-1.5">
               <VersionChip version={inst.version} />
               <LoaderChip loader={inst.loader} />
@@ -156,7 +136,8 @@ function Row({ inst, profile, actions }) {
     <motion.div layout className="flex items-center gap-4 rounded-2xl border border-bark-700/80 bg-bark-900/90 p-3 transition hover:border-ember-500/40">
       <div className="h-14 w-24 shrink-0 overflow-hidden rounded-lg"><Banner instance={inst} /></div>
       <div className="min-w-0 flex-1">
-        <h3 className="truncate text-lg font-bold">{inst.name}</h3>
+        <h3 className="cursor-pointer truncate text-lg font-bold hover:underline" onClick={() => actions.open(inst)}>{inst.name}</h3>
+        {inst.playTime > 0 && <p className="text-xs text-cream-muted">{formatPlayTime(inst.playTime)} de jeu</p>}
       </div>
       <div className="flex gap-1.5">
         <VersionChip version={inst.version} />

@@ -8,6 +8,7 @@ const settings = require('./settings')
 const auth = require('./auth')
 const content = require('./content')
 const launcher = require('./launcher')
+const { autoUpdater } = require('electron-updater')
 
 const isDev = process.env.VITE_DEV === '1'
 const dataRoot = path.join(app.getPath('appData'), '.terralauncher')
@@ -26,7 +27,7 @@ function createWindow() {
     minHeight: 680,
     frame: false,
     backgroundColor: '#140e0a',
-    icon: path.join(__dirname, '../renderer/public/icon.png'),
+    icon: path.join(__dirname, isDev || !app.isPackaged ? '../renderer/public/icon.png' : '../../dist/icon.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true }
   })
   if (isDev) win.loadURL('http://localhost:5173')
@@ -53,8 +54,9 @@ app.whenReady().then(() => {
 
   protocol.handle('terra', (req) => {
     const url = new URL(req.url)
-    const [id, file] = url.pathname.split('/').filter(Boolean)
-    const target = path.join(store.instanceDir(id), path.basename(file))
+    const [id, file] = url.pathname.split('/').filter(Boolean).map(decodeURIComponent)
+    // terra://banner/<id>/<fichier> ou terra://shot/<id>/<capture>
+    const target = url.hostname === 'shot' ? store.folderPath(id, 'screenshots', path.basename(file)) : path.join(store.instanceDir(id), path.basename(file))
     return net.fetch(pathToFileURL(target).toString())
   })
 
@@ -107,9 +109,9 @@ app.whenReady().then(() => {
   handle('accounts:remove', (uuid) => auth.remove(uuid))
 
   content.onInstancesChanged(() => win && !win.isDestroyed() && win.webContents.send('instances:changed'))
-  handle('game:launch', async (instanceId) => {
+  handle('game:launch', async (instanceId, opts) => {
     const session = await auth.activeSession(settings.msClientId())
-    return launcher.launch(instanceId, session, settings.raw())
+    return launcher.launch(instanceId, session, settings.raw(), opts || {})
   })
   handle('game:stop', (instanceId) => launcher.stop(instanceId))
   handle('game:repair', async (instanceId) => { await launcher.prepare(instanceId, { force: true }); return true })
@@ -119,6 +121,27 @@ app.whenReady().then(() => {
   handle('content:versions', (platform, id) => content.projectVersions(platform, id))
   handle('content:install', async (project, instanceId) => (await content.installToInstance(project, instanceId)).id)
   handle('content:installModpack', (opts) => content.installModpack(opts, dataRoot))
+  handle('instances:files', (id, folder) => store.listInstanceFolder(id, folder))
+  handle('instances:toggleMod', (id, name) => store.toggleMod(id, name))
+  handle('instances:trashFile', (id, folder, name) => shell.trashItem(store.folderPath(id, folder, name)))
+  handle('instances:openSubfolder', (id, folder) => {
+    const dir = path.join(store.gameDir(id), folder)
+    fs.mkdirSync(dir, { recursive: true })
+    return shell.openPath(dir)
+  })
+  handle('instances:duplicate', (id, name) => store.duplicateInstance(id, name))
+  handle('instances:export', async (id) => {
+    const inst = store.listInstances().find((i) => i.id === id)
+    const res = await dialog.showSaveDialog(win, {
+      title: 'Exporter l’instance',
+      defaultPath: path.join(app.getPath('downloads'), `${inst.name.replace(/[^\w .-]+/g, '_')}.zip`),
+      filters: [{ name: 'Archive ZIP', extensions: ['zip'] }]
+    })
+    if (res.canceled) return null
+    store.exportInstance(id, res.filePath)
+    shell.showItemInFolder(res.filePath)
+    return res.filePath
+  })
   handle('instances:update', (id, changes) => store.updateInstance(id, changes))
   handle('instances:delete', (id) => store.deleteInstance(id))
   handle('instances:openFolder', (id) => shell.openPath(store.gameDir(id)))
@@ -134,7 +157,24 @@ app.whenReady().then(() => {
     return store.setInstanceBanner(id, res.filePaths[0])
   })
 
+  handle('app:version', () => app.getVersion())
+  handle('app:installUpdate', () => autoUpdater.quitAndInstall())
+
   createWindow()
+  setupUpdates()
 })
+
+// Mises à jour automatiques depuis les versions publiées sur GitHub (version installée uniquement)
+function setupUpdates() {
+  if (!app.isPackaged) return
+  autoUpdater.autoDownload = true
+  autoUpdater.autoInstallOnAppQuit = true
+  const send = (state, info) => win && !win.isDestroyed() && win.webContents.send('app:update', { state, version: info?.version })
+  autoUpdater.on('update-available', (info) => send('downloading', info))
+  autoUpdater.on('update-downloaded', (info) => send('ready', info))
+  autoUpdater.on('error', () => {})
+  autoUpdater.checkForUpdates().catch(() => {})
+  setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 6 * 60 * 60 * 1000)
+}
 
 app.on('window-all-closed', () => app.quit())

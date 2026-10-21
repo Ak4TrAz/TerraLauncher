@@ -8,7 +8,7 @@ import { api, OFF_BY_DEFAULT } from '../api'
 const TYPE_LABEL = { mod: 'le mod', shader: 'le shader', resourcepack: 'le resource pack' }
 
 // Installation d'un modpack (nouvelle instance) ou d'un contenu dans une instance existante.
-export default function InstallModal({ hit, onClose, instances, profiles, itemDefs, onDone, onError }) {
+export default function InstallModal({ hit, onClose, instances, profiles, itemDefs, onDone, onError, preferredInstance }) {
   const isPack = hit?.type === 'modpack'
   const [name, setName] = useState('')
   const [versions, setVersions] = useState([])
@@ -25,7 +25,7 @@ export default function InstallModal({ hit, onClose, instances, profiles, itemDe
     setVersionId(null)
     setProfileId(profiles[0]?.id || null)
     setItems(itemDefs.map((i) => i.key).filter((k) => !OFF_BY_DEFAULT.includes(k) && k !== 'config'))
-    setTarget(null)
+    setTarget(preferredInstance || null)
     if (hit.type === 'modpack') {
       api.content.versions(hit.platform, hit.id).then((v) => { setVersions(v); setVersionId(v[0]?.id || null) }).catch((e) => onError(e.message))
     }

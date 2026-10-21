@@ -370,11 +370,114 @@ function gameDir(id) {
   return instancePaths(id).game
 }
 
+// ---------- Contenu d'une instance (page détail) ----------
+
+const FOLDERS = { mods: 'mods', resourcepacks: 'resourcepacks', shaderpacks: 'shaderpacks', screenshots: 'screenshots' }
+const modMetaCache = new Map()
+
+// Nom et version lus dans le .jar (Fabric, Quilt, Forge/NeoForge)
+function readModMeta(file) {
+  const st = fs.statSync(file)
+  const key = `${file}:${st.mtimeMs}`
+  if (modMetaCache.has(key)) return modMetaCache.get(key)
+  let meta = {}
+  try {
+    const AdmZip = require('adm-zip')
+    const zip = new AdmZip(file)
+    const fabric = zip.getEntry('fabric.mod.json') || zip.getEntry('quilt.mod.json')
+    if (fabric) {
+      const j = JSON.parse(zip.readAsText(fabric).replace(/^﻿/, ''))
+      const q = j.quilt_loader?.metadata
+      meta = { name: j.name || q?.name || j.id || j.quilt_loader?.id, version: j.version || j.quilt_loader?.version, description: j.description || q?.description }
+    } else {
+      const toml = zip.getEntry('META-INF/neoforge.mods.toml') || zip.getEntry('META-INF/mods.toml')
+      if (toml) {
+        const t = zip.readAsText(toml)
+        const pick = (k) => t.match(new RegExp(`^\\s*${k}\\s*=\\s*["']([^"']+)["']`, 'm'))?.[1]
+        meta = { name: pick('displayName') || pick('modId'), version: pick('version'), description: pick('description') }
+        if (meta.version?.includes('${')) meta.version = null
+      }
+    }
+  } catch {}
+  modMetaCache.set(key, meta)
+  return meta
+}
+
+function listInstanceFolder(id, folder) {
+  if (!FOLDERS[folder]) throw new Error('Dossier inconnu')
+  const dir = path.join(instancePaths(id).game, FOLDERS[folder])
+  let names = []
+  try { names = fs.readdirSync(dir) } catch { return [] }
+  return names
+    .filter((n) => (folder === 'screenshots' ? /\.(png|jpe?g)$/i.test(n) : folder === 'mods' ? /\.jar(\.disabled)?$/i.test(n) : true))
+    .map((n) => {
+      const full = path.join(dir, n)
+      const st = fs.statSync(full)
+      const entry = { name: n, size: st.isDirectory() ? 0 : st.size, mtime: st.mtimeMs, enabled: !n.endsWith('.disabled') }
+      if (folder === 'mods') {
+        const meta = readModMeta(full)
+        Object.assign(entry, { title: meta.name || null, version: meta.version || null, description: meta.description || null })
+      }
+      return entry
+    })
+    .sort((a, b) => (folder === 'screenshots' ? b.mtime - a.mtime : (a.name || '').localeCompare(b.name || '')))
+}
+
+function folderPath(id, folder, name) {
+  if (!FOLDERS[folder] || name.includes('/') || name.includes('\\') || name.startsWith('..')) throw new Error('Nom de fichier refusé')
+  return path.join(instancePaths(id).game, FOLDERS[folder], name)
+}
+
+// Active ou désactive un mod (ajoute ou retire « .disabled »)
+function toggleMod(id, name) {
+  const from = folderPath(id, 'mods', name)
+  const to = name.endsWith('.disabled') ? from.slice(0, -'.disabled'.length) : `${from}.disabled`
+  fs.renameSync(from, to)
+  return path.basename(to)
+}
+
+// Copie complète d'une instance ; les dossiers partagés avec un profil restent partagés
+function duplicateInstance(id, name) {
+  const src = instancePaths(id)
+  const inst = readJson(src.meta)
+  const copy = { ...inst, id: newId(), name: name || `${inst.name} (copie)`, createdAt: Date.now(), lastPlayed: null, playTime: 0 }
+  const dest = instancePaths(copy.id)
+  fs.mkdirSync(dest.game, { recursive: true })
+  for (const entry of fs.readdirSync(src.game)) {
+    const from = path.join(src.game, entry)
+    const to = path.join(dest.game, entry)
+    if (isLink(from)) fs.symlinkSync(fs.realpathSync(from), to, 'junction')
+    else copyRecursive(from, to)
+  }
+  for (const f of fs.readdirSync(src.dir)) if (f.startsWith('banner.')) fs.copyFileSync(path.join(src.dir, f), path.join(dest.dir, f))
+  writeJson(dest.meta, copy)
+  return copy
+}
+
+// Archive .zip de l'instance (fichiers de jeu, dossiers partagés inclus)
+function exportInstance(id, zipPath) {
+  const AdmZip = require('adm-zip')
+  const p = instancePaths(id)
+  const inst = readJson(p.meta)
+  const zip = new AdmZip()
+  zip.addFile('terralauncher-instance.json', Buffer.from(JSON.stringify({ name: inst.name, version: inst.version, loader: inst.loader, loaderVersion: inst.loaderVersion || null }, null, 2)))
+  const skip = new Set(['logs', 'crash-reports', 'natives'])
+  for (const entry of fs.readdirSync(p.game)) {
+    if (skip.has(entry)) continue
+    const full = fs.realpathSync(path.join(p.game, entry))
+    if (fs.statSync(full).isDirectory()) zip.addLocalFolder(full, `minecraft/${entry}`)
+    else zip.addLocalFile(full, 'minecraft')
+  }
+  zip.writeZip(zipPath)
+  return zipPath
+}
+
 const itemList = () => Object.entries(ITEMS).map(([key, v]) => ({ key, label: v.label }))
 
 module.exports = {
   init, itemList, mergeOptions,
   listProfiles, createProfile, updateProfile, deleteProfile, profileFilesDir, scanSource, importSelection, detectSources,
   listInstances, createInstance, updateInstance, deleteInstance, reapplyProfile, saveOptionsToProfile,
-  setInstanceBanner, instanceDir, gameDir
+  setInstanceBanner, instanceDir, gameDir,
+  listInstanceFolder, folderPath, toggleMod, duplicateInstance, exportInstance
 }

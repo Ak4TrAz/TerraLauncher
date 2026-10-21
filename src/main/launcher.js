@@ -260,7 +260,16 @@ function isRunning(instanceId) {
   return running.has(instanceId)
 }
 
-async function launch(instanceId, session, options) {
+// Minecraft 1.20+ utilise « Quick Play », les versions plus anciennes --server/--port
+function joinOptions(version, address) {
+  if (!address) return {}
+  const [host, port] = address.trim().split(':')
+  const [a, b] = version.split('.').map(Number)
+  const modern = a > 1 || b >= 20
+  return modern ? { quickPlayMultiplayer: port ? `${host}:${port}` : host } : { server: { ip: host, port: port ? Number(port) : undefined } }
+}
+
+async function launch(instanceId, session, options, { join } = {}) {
   if (running.has(instanceId)) throw new Error('Cette instance est déjà en cours d’exécution.')
   notifyStatus({ instanceId, state: 'preparing' })
   try {
@@ -288,7 +297,8 @@ async function launch(instanceId, session, options) {
       launcherBrand: 'TerraLauncher',
       maxMemory,
       minMemory: Math.min(1024, maxMemory),
-      extraJVMArgs
+      extraJVMArgs,
+      ...(join ? joinOptions(inst.version, options.serverAddress) : {})
     })
 
     // Journal du launcher dans le dossier de l'instance

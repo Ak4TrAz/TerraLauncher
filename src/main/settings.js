@@ -14,7 +14,8 @@ const DEFAULTS = {
   memory: 4096,
   jvmArgs: '',
   gpu: true,
-  minimizeOnLaunch: true
+  minimizeOnLaunch: true,
+  serverAddress: 'terranova.ist3rik.com'
 }
 
 let file = null

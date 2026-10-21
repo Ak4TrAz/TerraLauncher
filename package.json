@@ -9,17 +9,16 @@
     "web": "vite",
     "build": "vite build",
     "start": "electron .",
-    "secrets": "node scripts/write-build-secrets.js"
+    "secrets": "node scripts/write-build-secrets.js",
+    "dist": "vite build && electron-builder --win --publish never",
+    "release": "vite build && electron-builder --win --publish always"
   },
   "dependencies": {
     "@xmcl/core": "2.15.1",
     "@xmcl/installer": "6.1.2",
     "@xmcl/task": "4.1.1",
     "adm-zip": "0.5.16",
-    "framer-motion": "11.15.0",
-    "lucide-react": "0.468.0",
-    "react": "18.3.1",
-    "react-dom": "18.3.1"
+    "electron-updater": "6.8.10"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "4.3.4",
@@ -27,9 +26,59 @@
     "concurrently": "9.1.0",
     "cross-env": "7.0.3",
     "electron": "33.2.1",
+    "electron-builder": "26.17.0",
+    "framer-motion": "11.15.0",
+    "lucide-react": "0.468.0",
     "postcss": "8.4.49",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
     "tailwindcss": "3.4.17",
     "vite": "5.4.11",
     "wait-on": "8.0.1"
+  },
+  "author": {
+    "name": "Ak4TrAz"
+  },
+  "homepage": "https://github.com/Ak4TrAz/TerraLauncher",
+  "build": {
+    "appId": "fr.terranova.terralauncher",
+    "productName": "TerraLauncher",
+    "copyright": "Terranova",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**",
+      "src/main/**",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "TerraLauncher",
+      "artifactName": "TerraLauncher-Setup-${version}.exe"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Ak4TrAz",
+        "repo": "TerraLauncher",
+        "releaseType": "release"
+      }
+    ]
   }
 }

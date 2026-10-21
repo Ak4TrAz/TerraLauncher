@@ -242,3 +242,11 @@ export function ProfileAvatar({ profile, size = 'h-12 w-12 text-xl' }) {
     </div>
   )
 }
+
+// 3 h 25 min, 12 min, moins d'une minute
+export function formatPlayTime(ms) {
+  const min = Math.floor((ms || 0) / 60000)
+  if (min < 1) return 'moins d’une minute'
+  const h = Math.floor(min / 60)
+  return h ? `${h} h ${String(min % 60).padStart(2, '0')}` : `${min} min`
+}

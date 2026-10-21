@@ -35,7 +35,14 @@ contextBridge.exposeInMainWorld('terra', {
   },
   app: {
     openExternal: (url) => call('app:openExternal', url),
-    openDataFolder: () => call('app:openDataFolder')
+    openDataFolder: () => call('app:openDataFolder'),
+    version: () => call('app:version'),
+    installUpdate: () => call('app:installUpdate'),
+    onUpdate: (fn) => {
+      const listener = (_e, info) => fn(info)
+      ipcRenderer.on('app:update', listener)
+      return () => ipcRenderer.removeListener('app:update', listener)
+    }
   },
   accounts: {
     list: () => call('accounts:list'),
@@ -51,7 +58,7 @@ contextBridge.exposeInMainWorld('terra', {
     installModpack: (opts) => call('content:installModpack', opts)
   },
   game: {
-    launch: (id) => call('game:launch', id),
+    launch: (id, opts) => call('game:launch', id, opts),
     stop: (id) => call('game:stop', id),
     repair: (id) => call('game:repair', id),
     totalMemory: () => call('system:memory'),
@@ -80,6 +87,12 @@ contextBridge.exposeInMainWorld('terra', {
     openFolder: (id) => call('instances:openFolder', id),
     reapplyProfile: (id, profileId, items) => call('instances:reapplyProfile', id, profileId, items),
     saveToProfile: (id) => call('instances:saveToProfile', id),
-    pickBanner: (id) => call('instances:pickBanner', id)
+    pickBanner: (id) => call('instances:pickBanner', id),
+    files: (id, folder) => call('instances:files', id, folder),
+    toggleMod: (id, name) => call('instances:toggleMod', id, name),
+    trashFile: (id, folder, name) => call('instances:trashFile', id, folder, name),
+    openSubfolder: (id, folder) => call('instances:openSubfolder', id, folder),
+    duplicate: (id, name) => call('instances:duplicate', id, name),
+    exportZip: (id) => call('instances:export', id)
   }
 })

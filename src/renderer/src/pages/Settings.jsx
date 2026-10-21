@@ -52,6 +52,12 @@ function Status({ ok, okText, koText }) {
   return <span className={`rounded-full px-3 py-1 text-xs font-bold ${ok ? 'bg-[#1f5a2a] text-[#9be3a8]' : 'bg-bark-700 text-cream-muted'}`}>{ok ? okText : koText}</span>
 }
 
+function AppVersion() {
+  const [v, setV] = useState('')
+  useEffect(() => { api.app.version().then(setV).catch(() => {}) }, [])
+  return <p className="text-sm text-cream-muted">TerraLauncher {v} · mises à jour automatiques depuis GitHub</p>
+}
+
 function Connections({ draft, set }) {
   return (
     <div className="space-y-5">
@@ -118,7 +124,7 @@ export default function Settings({ settings, onSaved, initialTab = 'general' }) 
   const set = (changes) => setDraft((d) => ({ ...d, ...changes }))
 
   const save = async () => {
-    const changes = { animations: draft.animations, startPage: draft.startPage, msClientId: draft.msClientId || '', memory: draft.memory, jvmArgs: draft.jvmArgs || '', gpu: draft.gpu !== false, minimizeOnLaunch: draft.minimizeOnLaunch !== false }
+    const changes = { animations: draft.animations, startPage: draft.startPage, msClientId: draft.msClientId || '', memory: draft.memory, jvmArgs: draft.jvmArgs || '', gpu: draft.gpu !== false, minimizeOnLaunch: draft.minimizeOnLaunch !== false, serverAddress: (draft.serverAddress || '').trim() }
     if (draft.curseforgeKey !== settings?.curseforgeKey) changes.curseforgeKey = draft.curseforgeKey || ''
     onSaved(await api.settings.update(changes))
   }
@@ -196,6 +202,11 @@ export default function Settings({ settings, onSaved, initialTab = 'general' }) 
               <Toggle on={draft.gpu !== false} onChange={(v) => set({ gpu: v })} />
             </div>
           </Section>
+          <Section icon={Gamepad2} title="Serveur Terranova" subtitle="Utilisé par le bouton « Rejoindre Terranova » des instances.">
+            <Setting title="Adresse du serveur" desc="Ajoute « :port » si le serveur n’utilise pas le port 25565.">
+              <input className="input h-11 max-w-md font-mono" placeholder="terranova.ist3rik.com" value={draft.serverAddress || ''} onChange={(e) => set({ serverAddress: e.target.value })} />
+            </Setting>
+          </Section>
           <Section icon={Play} title="Au lancement du jeu" subtitle="Comportement de TerraLauncher quand Minecraft démarre.">
             <div className="flex items-center gap-6">
               <div className="flex-1">
@@ -210,6 +221,7 @@ export default function Settings({ settings, onSaved, initialTab = 'general' }) 
 
       {tab === 'connections' && settings?.devMode && <Connections draft={draft} set={set} />}
 
+      <AppVersion />
       <div className="flex justify-between pb-2">
         <button className="btn-ghost px-6 py-3" onClick={() => setDraft(settings || {})}><RotateCcw className="h-5 w-5" /> Annuler les modifications</button>
         <button className="btn-primary px-10 py-3 text-base" onClick={save}><Save className="h-5 w-5" /> Enregistrer</button>

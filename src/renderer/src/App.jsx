@@ -8,6 +8,8 @@ import Profiles from './pages/Profiles'
 import Discover from './pages/Discover'
 import Accounts from './pages/Accounts'
 import Settings from './pages/Settings'
+import InstanceDetail from './pages/InstanceDetail'
+import { instanceMenu } from './pages/Library'
 import CreateInstance from './pages/CreateInstance'
 import ImportModal from './components/ImportModal'
 import InstallModal from './components/InstallModal'
@@ -95,7 +97,7 @@ function Header({ tab, setTab, accounts, onSwitchAccount }) {
       </div>
       <nav className="no-drag flex h-full items-center gap-2">
         {TABS.map((t) => {
-          const active = tab === t.key || (tab === 'create' && t.key === 'library')
+          const active = tab === t.key || ((tab === 'create' || tab === 'instance') && t.key === 'library')
           return (
             <button key={t.key} onClick={() => setTab(t.key)} className={`relative flex h-full items-center gap-2.5 px-4 text-[17px] font-medium transition ${active ? 'text-ember-400' : 'text-cream/80 hover:text-cream'}`}>
               <t.icon className="h-5 w-5" />
@@ -133,6 +135,9 @@ export default function App() {
   const [toasts, setToasts] = useState([])
   const [gameStatus, setGameStatus] = useState({}) // instanceId -> { state, ... }
   const [crash, setCrash] = useState(null)
+  const [detailId, setDetailId] = useState(null)
+  const [update, setUpdate] = useState(null) // { state: downloading|ready, version }
+  const [discover, setDiscover] = useState({ type: null, target: null })
 
   const toast = useCallback((text, kind = 'info') => {
     const id = Math.random()
@@ -159,7 +164,8 @@ export default function App() {
       if (status.state === 'crashed') setCrash(status)
     })
     const offInstances = api.onInstancesChanged(refresh)
-    return () => { offStatus(); offInstances() }
+    const offUpdate = api.app.onUpdate(setUpdate)
+    return () => { offStatus(); offInstances(); offUpdate() }
   }, [refresh])
 
   const openSettings = (sub = 'general') => { setSettingsTab(sub); setTab('settings') }
@@ -169,7 +175,8 @@ export default function App() {
     try {
       const res = await fn(...args)
       await refresh()
-      if (success) toast(typeof success === 'function' ? success(res, ...args) : success, 'success')
+      const msg = typeof success === 'function' ? success(res, ...args) : success
+      if (msg) toast(msg, 'success')
       return res
     } catch (err) {
       toast(err.message, 'error')
@@ -179,13 +186,18 @@ export default function App() {
   const instanceActions = {
     create: () => setTab('create'),
     statusOf: (id) => gameStatus[id],
-    play: async (inst) => {
+    open: (inst) => { setDetailId(inst.id); setTab('instance') },
+    join: (inst) => instanceActions.play(inst, { join: true }),
+    update: run((inst, changes) => api.instances.update(inst.id, changes), (_r, _i, _c, msg) => msg),
+    duplicate: run((inst) => api.instances.duplicate(inst.id), (copy) => `Instance « ${copy.name} » créée.`),
+    exportZip: run((inst) => api.instances.exportZip(inst.id), (file) => (file ? 'Instance exportée.' : 'Export annulé.')),
+    play: async (inst, opts) => {
       if (!accounts.some((a) => a.active)) {
         toast('Connecte d’abord ton compte Microsoft pour jouer.')
         return setTab('accounts')
       }
       try {
-        await api.game.launch(inst.id)
+        await api.game.launch(inst.id, opts)
       } catch (err) {
         setGameStatus((s) => ({ ...s, [inst.id]: undefined }))
         toast(err.message, 'error')
@@ -239,25 +251,41 @@ export default function App() {
     <div className="relative flex h-full flex-col bg-[radial-gradient(ellipse_at_top,_#2b2019_0%,_#1c1612_55%)]">
       <Leaves animated={settings?.animations !== false} />
       <WindowControls />
-      <Header tab={tab} setTab={setTab} accounts={accounts} onSwitchAccount={async (uuid) => setAccounts(await api.accounts.setActive(uuid))} />
+      {update?.state === 'ready' && (
+        <div className="relative z-40 flex items-center justify-center gap-4 bg-ember-500 px-4 py-2 text-sm font-semibold text-white">
+          La version {update.version} de TerraLauncher est prête.
+          <button className="rounded-lg bg-white/20 px-3 py-1 hover:bg-white/30" onClick={() => api.app.installUpdate()}>Redémarrer pour mettre à jour</button>
+        </div>
+      )}
+      <Header tab={tab} setTab={(k) => { if (k === 'discover') setDiscover({ type: null, target: null }); setTab(k) }} accounts={accounts} onSwitchAccount={async (uuid) => setAccounts(await api.accounts.setActive(uuid))} />
 
       <main className="relative z-10 flex-1 overflow-y-auto px-8 py-7">
-        <AnimatePresence mode="wait">
-          <motion.div key={tab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.18 }} className="mx-auto max-w-[1440px]">
+        {/* Changement de page immédiat : seul l’affichage est animé (pas d’attente de fin d’animation) */}
+        <motion.div key={tab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18 }} className="mx-auto max-w-[1440px]">
             {tab === 'library' && <Library instances={instances} profiles={profiles} actions={instanceActions} />}
             {tab === 'create' && (
               <CreateInstance profiles={profiles} itemDefs={itemDefs} onCancel={() => setTab('library')} onCreate={createInstance} onCreateProfile={() => { setTab('profiles'); setProfileModal({ profile: null }) }} />
             )}
             {tab === 'profiles' && <Profiles profiles={profiles} instances={instances} actions={profileActions} />}
-            {tab === 'discover' && <Discover onInstall={setInstalling} devMode={settings?.devMode} onOpenSettings={() => openSettings('connections')} />}
+            {tab === 'discover' && <Discover key={discover.type || 'all'} initialType={discover.type} onInstall={setInstalling} devMode={settings?.devMode} onOpenSettings={() => openSettings('connections')} />}
+            {tab === 'instance' && (
+              <InstanceDetail
+                inst={instances.find((i) => i.id === detailId)}
+                profile={profiles.find((p) => p.id === instances.find((i) => i.id === detailId)?.profileId)}
+                actions={instanceActions}
+                menuItems={instances.find((i) => i.id === detailId) ? instanceMenu(instances.find((i) => i.id === detailId), instanceActions).filter((m) => m?.label !== 'Détails de l’instance') : []}
+                onBack={() => setTab('library')}
+                onAddContent={(type) => { setDiscover({ type, target: detailId }); setTab('discover') }}
+                toast={toast}
+              />
+            )}
             {tab === 'accounts' && <Accounts accounts={accounts} setAccounts={setAccounts} settings={settings} onBack={() => setTab('library')} onOpenSettings={() => openSettings('connections')} toast={toast} />}
             {tab === 'settings' && <Settings settings={settings} initialTab={settingsTab} onSaved={(s) => { setSettings(s); toast('Paramètres enregistrés.', 'success') }} />}
-          </motion.div>
-        </AnimatePresence>
+        </motion.div>
       </main>
 
       <ImportModal profile={importing} onClose={() => setImporting(null)} onDone={importDone} />
-      <InstallModal hit={installing} onClose={() => setInstalling(null)} instances={instances} profiles={profiles} itemDefs={itemDefs} onDone={(msg) => { refresh(); toast(msg, 'success') }} onError={(msg) => toast(msg, 'error')} />
+      <InstallModal hit={installing} preferredInstance={discover.target} onClose={() => setInstalling(null)} instances={instances} profiles={profiles} itemDefs={itemDefs} onDone={(msg) => { refresh(); toast(msg, 'success') }} onError={(msg) => toast(msg, 'error')} />
       <ProfileModal open={!!profileModal} profile={profileModal?.profile} onClose={() => setProfileModal(null)} onSave={saveProfile} />
       <ReapplyModal instance={reapplying} onClose={() => setReapplying(null)} onApply={reapply} profiles={profiles} itemDefs={itemDefs} />
       <ConfirmModal confirm={confirm} onClose={() => setConfirm(null)} />
