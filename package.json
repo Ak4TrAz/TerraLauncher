@@ -1,6 +1,6 @@
 {
   "name": "terralauncher",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Launcher Minecraft Terranova",
   "main": "src/main/main.js",
   "private": true,
