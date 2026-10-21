@@ -63,7 +63,7 @@ export default function CreateInstance({ profiles, itemDefs, onCancel, onCreate,
 
       <div className="flex items-center gap-6">
         <CubesIcon />
-        <h1 className="flex-1 text-[38px] font-extrabold tracking-tight">Créer une instance</h1>
+        <h1 className="flex-1 text-3xl font-extrabold xl:text-[38px] tracking-tight">Créer une instance</h1>
         <Stepper />
       </div>
 
@@ -91,11 +91,11 @@ export default function CreateInstance({ profiles, itemDefs, onCancel, onCreate,
 
           <div>
             <h2 className="mb-3 text-xl font-bold">Chargeur de mods</h2>
-            <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(165px,1fr))] gap-3">
               {LOADERS.map((l) => (
                 <button key={l.key} type="button" onClick={() => setLoader(l.key)} className={`relative flex items-center gap-3 rounded-tl border p-3 text-left transition ${loader === l.key ? 'border-ember-500 bg-ember-500/10' : 'border-bark-700 bg-bark-950/40 hover:border-bark-600'}`}>
                   <img src={l.icon} className="h-9 w-9 shrink-0 object-contain" alt="" draggable={false} />
-                  <span>
+                  <span className="min-w-0 pr-5">
                     <span className="block font-semibold">{l.label}</span>
                     <span className="block text-xs text-cream-muted">{LOADER_INFO[l.key]}</span>
                   </span>

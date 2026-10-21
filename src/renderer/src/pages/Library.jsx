@@ -23,7 +23,7 @@ function PageTitle({ onCreate }) {
     <div className="flex items-center gap-4">
       <CubesIcon />
       <div className="flex-1">
-        <h1 className="text-[34px] font-extrabold leading-tight tracking-tight">Votre bibliothèque</h1>
+        <h1 className="text-3xl font-extrabold xl:text-[34px] leading-tight tracking-tight">Votre bibliothèque</h1>
         <p className="text-[15px] text-orange-50/60">Gérez et lancez vos instances Minecraft Java.</p>
       </div>
       <button className="btn-primary px-6 py-3 text-base" onClick={onCreate}>

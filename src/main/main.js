@@ -119,6 +119,7 @@ app.whenReady().then(() => {
 
   handle('content:search', (opts) => content.search(opts))
   handle('content:versions', (platform, id) => content.projectVersions(platform, id))
+  handle('content:filters', (platform, type) => content.filters(platform, type))
   handle('content:details', (platform, id) => content.projectDetails(platform, id))
   handle('content:install', async (project, instanceId) => (await content.installToInstance(project, instanceId)).id)
   handle('content:installModpack', (opts) => content.installModpack(opts, dataRoot))

@@ -55,7 +55,7 @@ export default function Accounts({ accounts, setAccounts, settings, onBack, onOp
       <div className="flex items-center gap-5">
         <CubesIcon className="h-14 w-14" />
         <div>
-          <h1 className="text-[38px] font-extrabold leading-tight tracking-tight">Vos comptes</h1>
+          <h1 className="text-3xl font-extrabold xl:text-[38px] leading-tight tracking-tight">Vos comptes</h1>
           <p className="text-[17px] text-cream-muted">Choisissez le compte utilisé pour lancer Minecraft.</p>
         </div>
       </div>

@@ -135,7 +135,7 @@ export default function Settings({ settings, onSaved, initialTab = 'general' }) 
       <div className="flex items-center gap-5">
         <SettingsIcon className="h-14 w-14 text-ember-500" strokeWidth={2.5} />
         <div>
-          <h1 className="text-[38px] font-extrabold leading-tight tracking-tight">Paramètres</h1>
+          <h1 className="text-3xl font-extrabold xl:text-[38px] leading-tight tracking-tight">Paramètres</h1>
           <p className="text-[17px] text-cream-muted">Personnalisez votre expérience TerraLauncher.</p>
         </div>
       </div>

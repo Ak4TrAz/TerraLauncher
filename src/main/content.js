@@ -18,13 +18,28 @@ const CF_LOADER_NAME = { 1: 'forge', 4: 'fabric', 5: 'quilt', 6: 'neoforge' }
 const TYPE_DIR = { mod: 'mods', shader: 'shaderpacks', resourcepack: 'resourcepacks' }
 const LOADER_KEYS = ['fabric', 'forge', 'neoforge', 'quilt']
 
-// Catégories proposées dans Découvrir : slug Modrinth + mots-clés des noms CurseForge
-const CATEGORIES = {
-  adventure: { mr: 'adventure', cf: ['Adventure'] },
-  technology: { mr: 'technology', cf: ['Tech'] },
-  magic: { mr: 'magic', cf: ['Magic'] },
-  optimization: { mr: 'optimization', cf: ['Performance', 'Light'] },
-  multiplayer: { mr: 'multiplayer', cf: ['Multiplayer', 'Server'] }
+// Libellés français des catégories Modrinth (les autres gardent leur nom anglais mis en forme)
+const FR = {
+  adventure: 'Aventure', technology: 'Technologie', magic: 'Magie', optimization: 'Optimisation', multiplayer: 'Multijoueur',
+  quests: 'Quêtes', challenging: 'Difficile', combat: 'Combat', 'kitchen-sink': 'Fourre-tout', lightweight: 'Léger',
+  cursed: 'Maudit', decoration: 'Décoration', economy: 'Économie', equipment: 'Équipement', food: 'Nourriture',
+  'game-mechanics': 'Mécaniques de jeu', library: 'Bibliothèque', management: 'Gestion', minigame: 'Mini-jeux', mobs: 'Créatures',
+  social: 'Social', storage: 'Stockage', transportation: 'Transport', utility: 'Utilitaire', worldgen: 'Génération du monde',
+  modded: 'Moddé', realistic: 'Réaliste', simplistic: 'Simple', themed: 'Thématique', tweaks: 'Ajustements', 'vanilla-like': 'Façon vanilla',
+  audio: 'Sons', blocks: 'Blocs', 'core-shaders': 'Core shaders', entities: 'Entités', environment: 'Environnement', fonts: 'Polices',
+  gui: 'Interface', items: 'Objets', locale: 'Langues', models: 'Modèles', cartoon: 'Cartoon', fantasy: 'Fantasy', 'semi-realistic': 'Semi-réaliste',
+  atmosphere: 'Atmosphère', bloom: 'Bloom', 'colored-lighting': 'Lumières colorées', foliage: 'Feuillage', 'path-tracing': 'Path tracing',
+  pbr: 'PBR', reflections: 'Reflets', shadows: 'Ombres', high: 'Élevé', low: 'Faible', medium: 'Moyen', potato: 'PC modeste', screenshot: 'Captures'
+}
+const GROUP_FR = { categories: 'Catégories', features: 'Caractéristiques', resolutions: 'Résolution', 'performance impact': 'Impact sur les performances' }
+const label = (slug) => FR[slug] || slug.replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase())
+
+// Chargeurs proposés en filtre selon le type de contenu (Modrinth)
+const LOADER_FILTERS = {
+  mod: ['fabric', 'forge', 'neoforge', 'quilt'],
+  modpack: ['fabric', 'forge', 'neoforge', 'quilt'],
+  shader: ['iris', 'optifine', 'canvas', 'vanilla'],
+  resourcepack: []
 }
 
 let notifyInstances = () => {}
@@ -64,9 +79,13 @@ const sortVersions = (versions) => [...versions].sort((a, b) => {
   return 0
 })
 
-async function searchModrinth({ query, type, category, offset }) {
+// Filtres : dans un groupe = « ou », entre groupes = « et »
+async function searchModrinth({ query, type, categories = [], loaders = [], gameVersions = [], environment, offset }) {
   const facets = [[`project_type:${type}`]]
-  if (category && CATEGORIES[category]) facets.push([`categories:${CATEGORIES[category].mr}`])
+  if (categories.length) facets.push(...categories.map((c) => [`categories:${c}`]))
+  if (loaders.length) facets.push(loaders.map((l) => `categories:${l}`))
+  if (gameVersions.length) facets.push(gameVersions.map((v) => `versions:${v}`))
+  if (environment) facets.push([`${environment}_side:required`, `${environment}_side:optional`])
   const params = new URLSearchParams({ query: query || '', facets: JSON.stringify(facets), limit: '24', offset: String(offset || 0), index: query ? 'relevance' : 'downloads' })
   const json = await mr(`/search?${params}`)
   return {
@@ -90,12 +109,10 @@ async function searchModrinth({ query, type, category, offset }) {
 }
 
 let cfCategories = {}
-async function cfCategoryId(type, category) {
-  if (!category || !CATEGORIES[category]) return null
+async function cfCategoryList(type) {
   const classId = CF_CLASS[type]
   if (!cfCategories[classId]) cfCategories[classId] = (await cf(`/categories?gameId=${CF_GAME}&classId=${classId}`)).data
-  const words = CATEGORIES[category].cf
-  return cfCategories[classId].find((c) => words.some((w) => c.name.includes(w)))?.id || null
+  return cfCategories[classId]
 }
 
 function cfHit(m, type) {
@@ -117,10 +134,13 @@ function cfHit(m, type) {
   }
 }
 
-async function searchCurseforge({ query, type, category, offset }) {
+async function searchCurseforge({ query, type, categories = [], loaders = [], gameVersions = [], offset }) {
   const params = new URLSearchParams({ gameId: String(CF_GAME), classId: String(CF_CLASS[type]), searchFilter: query || '', sortField: '2', sortOrder: 'desc', pageSize: '24', index: String(offset || 0) })
-  const categoryId = await cfCategoryId(type, category)
-  if (categoryId) params.set('categoryId', String(categoryId))
+  // CurseForge accepte au plus 10 catégories, 4 versions et 5 chargeurs
+  if (categories.length) params.set('categoryIds', JSON.stringify(categories.slice(0, 10).map(Number)))
+  if (gameVersions.length) params.set('gameVersions', JSON.stringify(gameVersions.slice(0, 4)))
+  const loaderTypes = loaders.map((l) => CF_LOADER[l]).filter(Boolean)
+  if (loaderTypes.length) params.set('modLoaderTypes', JSON.stringify(loaderTypes.slice(0, 5)))
   const json = await cf(`/mods/search?${params}`)
   return { total: json.pagination?.totalCount || json.data.length, hits: json.data.map((m) => cfHit(m, type)) }
 }
@@ -128,6 +148,28 @@ async function searchCurseforge({ query, type, category, offset }) {
 function search(opts) {
   return opts.platform === 'curseforge' ? searchCurseforge(opts) : searchModrinth(opts)
 }
+
+// Catégories et chargeurs proposés en filtre pour une plateforme et un type de contenu
+async function filters(platform, type) {
+  if (platform === 'curseforge') {
+    const list = (await cfCategoryList(type)).filter((c) => !c.isClass && c.classId === CF_CLASS[type])
+    return {
+      groups: [{ key: 'categories', label: 'Catégories', items: list.map((c) => ({ key: String(c.id), label: c.name, iconUrl: c.iconUrl })).sort((a, b) => a.label.localeCompare(b.label)) }],
+      loaders: type === 'mod' || type === 'modpack' ? ['fabric', 'forge', 'neoforge', 'quilt'] : [],
+      environment: false
+    }
+  }
+  if (!mrTags) mrTags = await mr('/tag/category')
+  const groups = []
+  for (const c of mrTags.filter((t) => t.project_type === type)) {
+    let g = groups.find((x) => x.key === c.header)
+    if (!g) groups.push((g = { key: c.header, label: GROUP_FR[c.header] || c.header, items: [] }))
+    g.items.push({ key: c.name, label: label(c.name), svg: c.icon })
+  }
+  groups.forEach((g) => g.items.sort((a, b) => a.label.localeCompare(b.label)))
+  return { groups, loaders: LOADER_FILTERS[type] || [], environment: type === 'mod' || type === 'modpack' }
+}
+let mrTags = null
 
 // Versions d'un projet (pour choisir la version d'un modpack)
 async function projectVersions(platform, id) {
@@ -372,4 +414,4 @@ async function installCurseforgePack(task, project, versionId, inst, game) {
   return null
 }
 
-module.exports = { search, projectVersions, projectDetails, installToInstance, installModpack, onInstancesChanged }
+module.exports = { search, filters, projectVersions, projectDetails, installToInstance, installModpack, onInstancesChanged }

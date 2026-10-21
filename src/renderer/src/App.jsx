@@ -62,7 +62,7 @@ function AccountChip({ accounts, onSwitch, onManage }) {
     <div className="no-drag relative" ref={ref}>
       <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-3 rounded-xl px-2 py-1.5 transition hover:bg-white/5">
         <img src={`https://mc-heads.net/avatar/${active.uuid}/64`} className="pixel h-10 w-10 rounded-full border-2 border-bark-600 bg-bark-800" alt="" />
-        <span className="text-[17px] font-medium">{active.name}</span>
+        <span className="max-w-[140px] truncate text-[17px] font-medium">{active.name}</span>
         <ChevronDown className={`h-4 w-4 text-cream-muted transition ${open ? 'rotate-180' : ''}`} />
       </button>
       <AnimatePresence>
@@ -88,10 +88,10 @@ function AccountChip({ accounts, onSwitch, onManage }) {
 
 function Header({ tab, setTab, accounts, onSwitchAccount }) {
   return (
-    <header className="drag relative z-30 flex h-[76px] items-center gap-10 border-b border-bark-700/70 px-8">
+    <header className="drag relative z-30 flex h-[76px] items-center gap-5 border-b border-bark-700/70 px-6 xl:gap-10 xl:px-8">
       <div className="flex items-center gap-3">
         <Fox className="h-12 w-[52px] drop-shadow-[0_4px_10px_rgba(228,107,26,0.35)]" />
-        <span className="text-[30px] font-bold tracking-tight">
+        <span className="whitespace-nowrap text-2xl font-bold tracking-tight xl:text-[30px]">
           Terra<span className="text-ember-500">Launcher</span>
         </span>
       </div>
@@ -99,7 +99,7 @@ function Header({ tab, setTab, accounts, onSwitchAccount }) {
         {TABS.map((t) => {
           const active = tab === t.key || ((tab === 'create' || tab === 'instance') && t.key === 'library')
           return (
-            <button key={t.key} onClick={() => setTab(t.key)} className={`relative flex h-full items-center gap-2.5 px-4 text-[17px] font-medium transition ${active ? 'text-ember-400' : 'text-cream/80 hover:text-cream'}`}>
+            <button key={t.key} onClick={() => setTab(t.key)} className={`relative flex h-full items-center gap-2 whitespace-nowrap px-3 text-[16px] font-medium transition xl:gap-2.5 xl:px-4 xl:text-[17px] ${active ? 'text-ember-400' : 'text-cream/80 hover:text-cream'}`}>
               <t.icon className="h-5 w-5" />
               {t.label}
               {active && <motion.span layoutId="tab-underline" className="absolute inset-x-2 bottom-0 h-[3px] rounded-full bg-ember-500" />}
@@ -259,7 +259,7 @@ export default function App() {
       )}
       <Header tab={tab} setTab={(k) => { if (k === 'discover') setDiscover({ type: null, target: null }); setTab(k) }} accounts={accounts} onSwitchAccount={async (uuid) => setAccounts(await api.accounts.setActive(uuid))} />
 
-      <main className="relative z-10 flex-1 overflow-y-auto px-8 py-7">
+      <main className="relative z-10 flex-1 overflow-y-auto px-6 py-6 xl:px-8 xl:py-7">
         {/* Changement de page immédiat : seul l’affichage est animé (pas d’attente de fin d’animation) */}
         <motion.div key={tab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18 }} className="mx-auto max-w-[1440px]">
             {tab === 'library' && <Library instances={instances} profiles={profiles} actions={instanceActions} />}

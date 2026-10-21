@@ -1,29 +1,18 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Search, LayoutGrid, List, Mountain, Cog, Wand2, Gauge, Users, Download, ExternalLink, Loader2, Compass, KeyRound } from 'lucide-react'
+import { Search, LayoutGrid, List, Download, ExternalLink, Loader2, Compass, KeyRound } from 'lucide-react'
 import { api, LOADERS } from '../api'
 import { Select, Menu, VersionChip } from '../components/ui'
 import ProjectPage from './ProjectPage'
+import FilterPanel from '../components/FilterPanel'
 
-const CATEGORIES = [
-  { key: null, label: 'Tous', icon: LayoutGrid },
-  { key: 'adventure', label: 'Aventure', icon: Mountain },
-  { key: 'technology', label: 'Technologie', icon: Cog },
-  { key: 'magic', label: 'Magie', icon: Wand2 },
-  { key: 'optimization', label: 'Optimisation', icon: Gauge },
-  { key: 'multiplayer', label: 'Multijoueur', icon: Users }
-]
+const NO_FILTERS = { categories: [], loaders: [], gameVersions: [], environment: null }
 
 const TYPES = [
   { value: 'modpack', label: 'Modpacks', placeholder: 'Rechercher un modpack…' },
   { value: 'mod', label: 'Mods', placeholder: 'Rechercher un mod…' },
   { value: 'shader', label: 'Shaders', placeholder: 'Rechercher un shader…' },
   { value: 'resourcepack', label: 'Resource packs', placeholder: 'Rechercher un resource pack…' }
-]
-
-const PLATFORMS = [
-  { key: 'modrinth', label: 'Modrinth', color: '#1bd96a' },
-  { key: 'curseforge', label: 'CurseForge', color: '#f16436' }
 ]
 
 const formatDownloads = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)} M` : n >= 1e3 ? `${Math.round(n / 1e3)} k` : String(n))
@@ -106,7 +95,9 @@ const storedView = () => { try { return localStorage.getItem('terra.discoverView
 export default function Discover({ onInstall, onOpenSettings, devMode, initialType }) {
   const [platform, setPlatform] = useState('modrinth')
   const [type, setType] = useState(initialType || 'modpack')
-  const [category, setCategory] = useState(null)
+  const [filters, setFilters] = useState(NO_FILTERS)
+  const [defs, setDefs] = useState(null)
+  const [defsLoading, setDefsLoading] = useState(false)
   const [query, setQuery] = useState('')
   const [results, setResults] = useState({ hits: [], total: 0 })
   const [loading, setLoading] = useState(false)
@@ -116,6 +107,19 @@ export default function Discover({ onInstall, onOpenSettings, devMode, initialTy
   const [opened, setOpened] = useState(null)
   const setView = (v) => { setViewState(v); try { localStorage.setItem('terra.discoverView', v) } catch {} }
 
+  // Filtres disponibles : rechargés (et remis à zéro) quand la plateforme ou le type change
+  useEffect(() => {
+    let cancelled = false
+    setFilters(NO_FILTERS)
+    setDefs(null)
+    setDefsLoading(true)
+    api.content.filters(platform, type)
+      .then((d) => !cancelled && setDefs(d))
+      .catch(() => !cancelled && setDefs({ groups: [], loaders: [], environment: false }))
+      .finally(() => !cancelled && setDefsLoading(false))
+    return () => { cancelled = true }
+  }, [platform, type])
+
   // Recherche (avec un petit délai pendant la frappe)
   useEffect(() => {
     const id = ++reqId.current
@@ -123,7 +127,7 @@ export default function Discover({ onInstall, onOpenSettings, devMode, initialTy
     setError(null)
     const t = setTimeout(async () => {
       try {
-        const res = await api.content.search({ platform, type, category, query })
+        const res = await api.content.search({ platform, type, query, ...filters })
         if (id === reqId.current) setResults(res)
       } catch (e) {
         if (id === reqId.current) { setError(e.message); setResults({ hits: [], total: 0 }) }
@@ -132,12 +136,12 @@ export default function Discover({ onInstall, onOpenSettings, devMode, initialTy
       }
     }, query ? 350 : 0)
     return () => clearTimeout(t)
-  }, [platform, type, category, query])
+  }, [platform, type, query, filters])
 
   const loadMore = async () => {
     setLoading(true)
     try {
-      const res = await api.content.search({ platform, type, category, query, offset: results.hits.length })
+      const res = await api.content.search({ platform, type, query, ...filters, offset: results.hits.length })
       setResults((r) => ({ total: res.total, hits: [...r.hits, ...res.hits] }))
     } catch (e) { setError(e.message) } finally { setLoading(false) }
   }
@@ -159,15 +163,8 @@ export default function Discover({ onInstall, onOpenSettings, devMode, initialTy
           <Compass className="h-8 w-8 text-white" />
         </div>
         <div className="flex-1">
-          <h1 className="text-[38px] font-extrabold leading-tight tracking-tight">Découvrez votre prochaine aventure</h1>
+          <h1 className="text-3xl font-extrabold xl:text-[38px] leading-tight tracking-tight">Découvrez votre prochaine aventure</h1>
           <p className="text-[15px] text-cream-muted">Explorez des modpacks, mods et shaders, puis installez-les en un clic.</p>
-        </div>
-        <div className="flex rounded-tl border border-bark-700 bg-bark-950/60 p-1">
-          {PLATFORMS.map((p) => (
-            <button key={p.key} onClick={() => setPlatform(p.key)} className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition ${platform === p.key ? 'bg-bark-800 text-cream' : 'text-cream-muted hover:text-cream'}`}>
-              <span className="h-2.5 w-2.5 rounded-full" style={{ background: p.color }} /> {p.label}
-            </button>
-          ))}
         </div>
       </div>
 
@@ -176,11 +173,6 @@ export default function Discover({ onInstall, onOpenSettings, devMode, initialTy
           <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-cream-muted" />
           <input className="input h-12 pl-12" placeholder={TYPES.find((t) => t.value === type).placeholder} value={query} onChange={(e) => setQuery(e.target.value)} />
         </div>
-        {CATEGORIES.map((c) => (
-          <button key={c.label} onClick={() => setCategory(c.key)} className={`flex h-12 items-center gap-2 rounded-tl border px-3.5 text-[15px] transition ${category === c.key ? 'border-ember-500 bg-ember-500/10 text-cream' : 'border-bark-700 bg-bark-850/80 text-cream/80 hover:border-bark-600'}`}>
-            <c.icon className={`h-[18px] w-[18px] ${category === c.key ? 'text-ember-400' : ''}`} /> {c.label}
-          </button>
-        ))}
         <div className="flex rounded-tl border border-bark-700 bg-bark-950/70 p-1">
           {[['grid', LayoutGrid], ['list', List]].map(([k, Icon]) => (
             <button key={k} title={k === 'grid' ? 'Grille' : 'Liste'} onClick={() => setView(k)} className={`flex w-11 items-center justify-center rounded-lg transition ${view === k ? 'bg-ember-500/20 text-ember-400 ring-1 ring-ember-500/60' : 'text-cream-muted hover:text-cream'}`}>
@@ -188,9 +180,12 @@ export default function Discover({ onInstall, onOpenSettings, devMode, initialTy
             </button>
           ))}
         </div>
-        <Select className="h-12 w-[175px]" value={type} onChange={(v) => { setType(v); setCategory(null) }} options={TYPES} />
+        <Select className="h-12 w-[175px]" value={type} onChange={setType} options={TYPES} />
       </div>
 
+      <div className="grid grid-cols-[250px_1fr] items-start gap-5 xl:grid-cols-[270px_1fr]">
+      <FilterPanel platform={platform} setPlatform={setPlatform} defs={defs} loading={defsLoading} filters={filters} setFilters={setFilters} />
+      <div className="min-w-0 space-y-5">
       {error && (
         <div className="panel flex items-center gap-4 p-5">
           {needsKey && <KeyRound className="h-8 w-8 text-ember-400" />}
@@ -200,7 +195,7 @@ export default function Discover({ onInstall, onOpenSettings, devMode, initialTy
       )}
 
       {view === 'grid' ? (
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 2xl:grid-cols-3">
           {results.hits.map((hit, i) => <ProjectCard key={`${hit.platform}-${hit.id}`} hit={hit} index={i} onInstall={onInstall} onOpen={openProject} />)}
         </div>
       ) : (
@@ -216,6 +211,8 @@ export default function Discover({ onInstall, onOpenSettings, devMode, initialTy
           <button className="btn-ghost px-8" onClick={loadMore}>Afficher plus</button>
         </div>
       )}
+      </div>
+      </div>
     </div>
     </>
   )

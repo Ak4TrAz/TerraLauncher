@@ -86,13 +86,27 @@ function createMock() {
       search: async (opts) => {
         if (opts.platform === 'curseforge') throw new Error('CurseForge : disponible dans l’application (clé d’API requise).')
         const facets = [[`project_type:${opts.type}`]]
-        if (opts.category) facets.push([`categories:${opts.category}`])
+        for (const c of opts.categories || []) facets.push([`categories:${c}`])
+        if (opts.loaders?.length) facets.push(opts.loaders.map((l) => `categories:${l}`))
+        if (opts.gameVersions?.length) facets.push(opts.gameVersions.map((v) => `versions:${v}`))
+        if (opts.environment) facets.push([`${opts.environment}_side:required`, `${opts.environment}_side:optional`])
         const p = new URLSearchParams({ query: opts.query || '', facets: JSON.stringify(facets), limit: '24', offset: String(opts.offset || 0), index: opts.query ? 'relevance' : 'downloads' })
         const json = await (await fetch(`https://api.modrinth.com/v2/search?${p}`)).json()
         return {
           total: json.total_hits,
           hits: json.hits.map((h) => ({ platform: 'modrinth', id: h.project_id, slug: h.slug, type: opts.type, title: h.title, description: h.description, author: h.author, icon: h.icon_url, image: h.featured_gallery || h.gallery?.[0] || null, downloads: h.downloads, gameVersion: h.versions?.filter((v) => /^\d+(\.\d+)+$/.test(v)).pop() || null, loaders: h.categories.filter((c) => ['fabric', 'forge', 'neoforge', 'quilt'].includes(c)), url: `https://modrinth.com/${opts.type}/${h.slug}` }))
         }
+      },
+      filters: async (platform, type) => {
+        if (platform === 'curseforge') throw new Error('CurseForge : disponible dans l’application.')
+        const tags = await (await fetch('https://api.modrinth.com/v2/tag/category')).json()
+        const groups = []
+        for (const c of tags.filter((t) => t.project_type === type)) {
+          let g = groups.find((x) => x.key === c.header)
+          if (!g) groups.push((g = { key: c.header, label: c.header === 'categories' ? 'Catégories' : c.header, items: [] }))
+          g.items.push({ key: c.name, label: c.name.replace(/-/g, ' ').replace(/^./, (x) => x.toUpperCase()), svg: c.icon })
+        }
+        return { groups, loaders: type === 'shader' ? ['iris', 'optifine', 'canvas', 'vanilla'] : type === 'resourcepack' ? [] : ['fabric', 'forge', 'neoforge', 'quilt'], environment: type === 'mod' || type === 'modpack' }
       },
       details: async (_p, pid) => {
         const p = await (await fetch(`https://api.modrinth.com/v2/project/${pid}`)).json()

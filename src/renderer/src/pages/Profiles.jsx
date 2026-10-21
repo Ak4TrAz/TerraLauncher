@@ -69,7 +69,7 @@ export default function Profiles({ profiles, instances, actions }) {
           <UserRound className="h-7 w-7 text-ember-400" />
         </div>
         <div className="flex-1">
-          <h1 className="text-[34px] font-extrabold leading-tight tracking-tight">Vos profils</h1>
+          <h1 className="text-3xl font-extrabold xl:text-[34px] leading-tight tracking-tight">Vos profils</h1>
           <p className="text-[15px] text-orange-50/60">Vos touches, shaders et packs, réutilisables dans chaque nouvelle instance.</p>
         </div>
         <button className="btn-primary px-6 py-3 text-base" onClick={actions.create}>
