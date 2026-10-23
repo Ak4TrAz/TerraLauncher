@@ -36,6 +36,7 @@ function init(dataRoot) {
   fs.mkdirSync(profilesDir(), { recursive: true })
   fs.mkdirSync(instancesDir(), { recursive: true })
   renameLegacyInstanceFolders()
+  repairLinks()
 }
 
 const newId = () => crypto.randomBytes(6).toString('hex')
@@ -49,6 +50,37 @@ function isLink(p) {
 // Supprime une jonction sans toucher au dossier ciblé.
 function removeLink(p) {
   try { fs.unlinkSync(p) } catch { fs.rmdirSync(p) }
+}
+
+// Chemin réel : une jonction vers un dossier redirigé (application empaquetée) serait vide pour le jeu
+const realPath = (p) => { try { return fs.realpathSync.native(p) } catch { return p } }
+
+function linkDir(src, dest) {
+  fs.symlinkSync(realPath(src), dest, 'junction')
+}
+
+// Profil visé par une jonction d'instance (même si elle est cassée) : { profileId, name } ou null
+function linkedProfile(link) {
+  if (!isLink(link)) return null
+  try {
+    const m = fs.readlinkSync(link).match(/[\\/]profiles[\\/]([0-9a-f]+)[\\/]files[\\/]([^\\/]+)[\\/]?$/i)
+    return m ? { profileId: m[1], name: m[2] } : null
+  } catch { return null }
+}
+
+// Recrée les jonctions cassées vers un profil qui existe toujours
+function repairLinks() {
+  for (const inst of scanInstances()) {
+    for (const name of ['shaderpacks', 'resourcepacks']) {
+      const link = path.join(instancePaths(inst.id).game, name)
+      const target = linkedProfile(link)
+      if (!target || fs.existsSync(link)) continue
+      const src = path.join(profilePaths(target.profileId).files, target.name)
+      if (!fs.existsSync(src)) continue
+      removeLink(link)
+      linkDir(src, link)
+    }
+  }
 }
 
 function copyRecursive(src, dest) {
@@ -138,11 +170,10 @@ function deleteProfile(id) {
     const game = instancePaths(inst.id).game
     for (const name of ['shaderpacks', 'resourcepacks']) {
       const target = path.join(game, name)
-      if (isLink(target) && fs.realpathSync(target).startsWith(fs.realpathSync(p.files))) {
-        const src = fs.realpathSync(target)
-        removeLink(target)
-        copyRecursive(src, target)
-      }
+      if (linkedProfile(target)?.profileId !== id) continue
+      removeLink(target)
+      const src = path.join(p.files, name)
+      if (fs.existsSync(src)) copyRecursive(src, target)
     }
     if (inst.profileId === id) writeJson(instancePaths(inst.id).meta, { ...inst, profileId: null })
   }
@@ -337,7 +368,7 @@ function applyProfile(instanceId, profileId, items) {
           }
         }
         fs.mkdirSync(path.dirname(dest), { recursive: true })
-        fs.symlinkSync(src, dest, 'junction')
+        linkDir(src, dest)
       } else if (!fs.existsSync(src)) {
         continue
       } else if (entry.mode === 'merge') {
@@ -504,7 +535,10 @@ function duplicateInstance(id, name) {
   for (const entry of fs.readdirSync(src.game)) {
     const from = path.join(src.game, entry)
     const to = path.join(dest.game, entry)
-    if (isLink(from)) fs.symlinkSync(fs.realpathSync(from), to, 'junction')
+    if (isLink(from)) {
+      const t = linkedProfile(from)
+      linkDir(t ? path.join(profilePaths(t.profileId).files, t.name) : fs.readlinkSync(from), to)
+    }
     else copyRecursive(from, to)
   }
   for (const f of fs.readdirSync(src.dir)) if (f.startsWith('banner.')) fs.copyFileSync(path.join(src.dir, f), path.join(dest.dir, f))
