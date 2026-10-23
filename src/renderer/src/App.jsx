@@ -24,8 +24,8 @@ import CrashModal from './components/CrashModal'
 
 const TABS = [
   { key: 'library', label: 'Bibliothèque', icon: LayoutGrid },
-  { key: 'profiles', label: 'Profils', icon: UserRound },
-  { key: 'discover', label: 'Découvrir', icon: Compass }
+  { key: 'discover', label: 'Découvrir', icon: Compass },
+  { key: 'profiles', label: 'Profils', icon: UserRound }
 ]
 
 function WindowControls() {
