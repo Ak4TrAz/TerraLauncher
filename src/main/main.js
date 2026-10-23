@@ -14,6 +14,10 @@ const isDev = process.env.VITE_DEV === '1'
 const dataRoot = path.join(app.getPath('appData'), '.terralauncher')
 const defaultMinecraftDir = path.join(app.getPath('appData'), '.minecraft')
 
+// L'Explorateur ne voit pas les dossiers redirigés (application empaquetée) : on lui passe le chemin réel
+const realPath = (p) => { try { return fs.realpathSync.native(p) } catch { return p } }
+const openFolder = (p) => shell.openPath(realPath(p))
+
 // terra://banner/<instanceId>/<fichier> sert les images de bannière des instances
 protocol.registerSchemesAsPrivileged([{ scheme: 'terra', privileges: { standard: true, secure: true, supportFetchAPI: true } }])
 
@@ -70,7 +74,7 @@ app.whenReady().then(() => {
   handle('profiles:create', (data) => store.createProfile(data))
   handle('profiles:update', (id, changes) => store.updateProfile(id, changes))
   handle('profiles:delete', (id) => store.deleteProfile(id))
-  handle('profiles:openFolder', (id) => shell.openPath(store.profileFilesDir(id)))
+  handle('profiles:openFolder', (id) => openFolder(store.profileFilesDir(id)))
   handle('import:sources', () => store.detectSources(app.getPath('appData'), app.getPath('home')))
   handle('import:pickFolder', async () => {
     const res = await dialog.showOpenDialog(win, {
@@ -100,7 +104,7 @@ app.whenReady().then(() => {
     if (!/^https:\/\//.test(url)) throw new Error('Lien refusé')
     return shell.openExternal(url)
   })
-  handle('app:openDataFolder', () => shell.openPath(dataRoot))
+  handle('app:openDataFolder', () => openFolder(dataRoot))
 
   handle('accounts:list', () => auth.list())
   handle('accounts:login', () => auth.login(settings.msClientId()))
@@ -129,7 +133,7 @@ app.whenReady().then(() => {
   handle('instances:openSubfolder', (id, folder) => {
     const dir = path.join(store.gameDir(id), folder)
     fs.mkdirSync(dir, { recursive: true })
-    return shell.openPath(dir)
+    return openFolder(dir)
   })
   handle('instances:duplicate', (id, name) => store.duplicateInstance(id, name))
   handle('instances:export', async (id) => {
@@ -141,12 +145,12 @@ app.whenReady().then(() => {
     })
     if (res.canceled) return null
     store.exportInstance(id, res.filePath)
-    shell.showItemInFolder(res.filePath)
+    shell.showItemInFolder(realPath(res.filePath))
     return res.filePath
   })
   handle('instances:update', (id, changes) => store.updateInstance(id, changes))
   handle('instances:delete', (id) => store.deleteInstance(id))
-  handle('instances:openFolder', (id) => shell.openPath(store.gameDir(id)))
+  handle('instances:openFolder', (id) => openFolder(store.gameDir(id)))
   handle('instances:reapplyProfile', (id, profileId, items) => store.reapplyProfile(id, profileId, items))
   handle('instances:saveToProfile', (id) => store.saveOptionsToProfile(id))
   handle('instances:pickBanner', async (id) => {

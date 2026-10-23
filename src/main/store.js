@@ -2,8 +2,8 @@
 // Dossier racine : %APPDATA%\.terralauncher
 //   profiles/<id>/profile.json   métadonnées du profil
 //   profiles/<id>/files/         options.txt, shaderpacks/, resourcepacks/, servers.dat, config/
-//   instances/<id>/instance.json métadonnées de l'instance
-//   instances/<id>/minecraft/    dossier de jeu de l'instance
+//   instances/<nom>/instance.json métadonnées de l'instance (son id est dedans)
+//   instances/<nom>/minecraft/    dossier de jeu de l'instance
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
@@ -35,6 +35,7 @@ function init(dataRoot) {
   root = dataRoot
   fs.mkdirSync(profilesDir(), { recursive: true })
   fs.mkdirSync(instancesDir(), { recursive: true })
+  renameLegacyInstanceFolders()
 }
 
 const newId = () => crypto.randomBytes(6).toString('hex')
@@ -251,15 +252,66 @@ function profileFilesDir(id) {
 
 // ---------- Instances ----------
 
-function instancePaths(id) {
-  const dir = path.join(instancesDir(), id)
+// Chaque instance vit dans un dossier qui porte son nom ; l'id (dans instance.json) reste la vraie clé.
+const folderOf = new Map() // id -> nom du dossier
+
+const pathsIn = (folder) => {
+  const dir = path.join(instancesDir(), folder)
   return { dir, meta: path.join(dir, 'instance.json'), game: path.join(dir, 'minecraft') }
 }
 
+function scanInstances() {
+  folderOf.clear()
+  const list = []
+  for (const folder of fs.readdirSync(instancesDir())) {
+    const meta = pathsIn(folder).meta
+    if (!fs.existsSync(meta)) continue
+    try {
+      const inst = readJson(meta)
+      folderOf.set(inst.id, folder)
+      list.push(inst)
+    } catch {}
+  }
+  return list
+}
+
+function instancePaths(id) {
+  if (!folderOf.has(id)) scanInstances()
+  return pathsIn(folderOf.get(id) || id)
+}
+
 function listInstances() {
-  return fs.readdirSync(instancesDir())
-    .filter((id) => fs.existsSync(instancePaths(id).meta))
-    .map((id) => readJson(instancePaths(id).meta))
+  return scanInstances()
+}
+
+// Nom de dossier valide sous Windows, et libre (« Survie », « Survie (2) »…)
+const RESERVED = /^(con|prn|aux|nul|com\d|lpt\d)$/i
+function freeFolderName(name, current = null) {
+  let base = String(name || '').replace(/[<>:"/\\|?*\x00-\x1f]/g, '').replace(/[. ]+$/, '').trim().slice(0, 60) || 'Instance'
+  if (RESERVED.test(base)) base += '_'
+  for (let n = 1; ; n++) {
+    const candidate = n === 1 ? base : `${base} (${n})`
+    if (candidate.toLowerCase() === current?.toLowerCase()) return candidate
+    if (!fs.existsSync(path.join(instancesDir(), candidate))) return candidate
+  }
+}
+
+// Renomme le dossier d'une instance d'après son nom. Si un fichier est verrouillé (jeu lancé),
+// on garde l'ancien dossier : l'instance reste retrouvable par son id.
+function syncFolderName(id, name) {
+  const current = instancePaths(id)
+  const folder = path.basename(current.dir)
+  const wanted = freeFolderName(name, folder)
+  if (wanted === folder) return
+  try {
+    fs.renameSync(current.dir, path.join(instancesDir(), wanted))
+    folderOf.set(id, wanted)
+  } catch {}
+}
+
+// Anciennes versions : dossiers nommés par l'id
+function renameLegacyInstanceFolders() {
+  for (const inst of scanInstances()) if (folderOf.get(inst.id) === inst.id) syncFolderName(inst.id, inst.name)
 }
 
 // Applique un profil sur le dossier de jeu d'une instance.
@@ -303,7 +355,9 @@ function applyProfile(instanceId, profileId, items) {
 
 function createInstance({ name, version, loader, banner, profileId, items }) {
   const id = newId()
-  const p = instancePaths(id)
+  const folder = freeFolderName(name || 'Nouvelle instance')
+  folderOf.set(id, folder)
+  const p = pathsIn(folder)
   fs.mkdirSync(p.game, { recursive: true })
   const instance = {
     id,
@@ -325,6 +379,7 @@ function updateInstance(id, changes) {
   const p = instancePaths(id)
   const instance = { ...readJson(p.meta), ...changes, id }
   writeJson(p.meta, instance)
+  if (changes.name) syncFolderName(id, instance.name)
   return instance
 }
 
@@ -352,6 +407,7 @@ function deleteInstance(id) {
     if (isLink(target)) removeLink(target)
   }
   fs.rmSync(p.dir, { recursive: true, force: true })
+  folderOf.delete(id)
 }
 
 function setInstanceBanner(id, imagePath) {
@@ -441,7 +497,9 @@ function duplicateInstance(id, name) {
   const src = instancePaths(id)
   const inst = readJson(src.meta)
   const copy = { ...inst, id: newId(), name: name || `${inst.name} (copie)`, createdAt: Date.now(), lastPlayed: null, playTime: 0 }
-  const dest = instancePaths(copy.id)
+  const folder = freeFolderName(copy.name)
+  folderOf.set(copy.id, folder)
+  const dest = pathsIn(folder)
   fs.mkdirSync(dest.game, { recursive: true })
   for (const entry of fs.readdirSync(src.game)) {
     const from = path.join(src.game, entry)
