@@ -2,6 +2,8 @@
 const fs = require('fs')
 const path = require('path')
 const os = require('os')
+const crypto = require('crypto')
+const { shell } = require('electron')
 const AdmZip = require('adm-zip')
 const store = require('./store')
 const downloads = require('./downloads')
@@ -413,4 +415,122 @@ async function installCurseforgePack(task, project, versionId, inst, game) {
   return null
 }
 
-module.exports = { search, filters, projectVersions, projectDetails, installToInstance, installModpack, onInstancesChanged }
+// ---------- Mises à jour des mods d'une instance ----------
+// Modrinth reconnaît un fichier à son SHA-1, CurseForge à son empreinte MurmurHash2 :
+// on retrouve ainsi un mod quelle que soit sa provenance (modpack, import, ajout à la main).
+
+async function mrPost(pathname, body) {
+  const res = await fetch(MR + pathname, { method: 'POST', headers: { 'User-Agent': UA, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  if (!res.ok) throw new Error(`Modrinth : erreur ${res.status}`)
+  return res.json()
+}
+
+// Empreinte CurseForge : MurmurHash2 (graine 1) du fichier sans tabulations, retours à la ligne ni espaces
+function cfFingerprint(buf) {
+  const data = buf.filter((b) => b !== 9 && b !== 10 && b !== 13 && b !== 32)
+  const m = 0x5bd1e995
+  let len = data.length
+  let h = (1 ^ len) >>> 0
+  let i = 0
+  while (len >= 4) {
+    let k = data[i] | (data[i + 1] << 8) | (data[i + 2] << 16) | (data[i + 3] << 24)
+    k = Math.imul(k, m)
+    k ^= k >>> 24
+    k = Math.imul(k, m)
+    h = Math.imul(h, m) ^ k
+    i += 4
+    len -= 4
+  }
+  switch (len) {
+    case 3: h ^= data[i + 2] << 16 // fallthrough
+    case 2: h ^= data[i + 1] << 8 // fallthrough
+    case 1: h ^= data[i]; h = Math.imul(h, m)
+  }
+  h ^= h >>> 13
+  h = Math.imul(h, m)
+  h ^= h >>> 15
+  return h >>> 0
+}
+
+const modUpdates = new Map() // instanceId -> { fichier actuel -> mise à jour trouvée }
+
+async function checkModUpdates(instanceId) {
+  const inst = store.listInstances().find((i) => i.id === instanceId)
+  if (!inst || inst.loader === 'vanilla') return {}
+  const dir = path.join(store.gameDir(instanceId), 'mods')
+  let names = []
+  try { names = fs.readdirSync(dir).filter((n) => /\.jar(\.disabled)?$/i.test(n)) } catch { return {} }
+  const loaders = inst.loader === 'quilt' ? ['quilt', 'fabric'] : [inst.loader]
+  const mods = names.map((name) => {
+    const buf = fs.readFileSync(path.join(dir, name))
+    return { name, sha1: crypto.createHash('sha1').update(buf).digest('hex'), buf }
+  })
+  const found = {}
+
+  // Modrinth : une seule requête pour tous les fichiers
+  const known = new Set()
+  try {
+    const latest = await mrPost('/version_files/update', { hashes: mods.map((x) => x.sha1), algorithm: 'sha1', loaders, game_versions: [inst.version] })
+    const current = await mrPost('/version_files', { hashes: mods.map((x) => x.sha1), algorithm: 'sha1' })
+    for (const mod of mods) {
+      if (current[mod.sha1]) known.add(mod.name)
+      const v = latest[mod.sha1]
+      const file = v && (v.files.find((f) => f.primary) || v.files[0])
+      const now = current[mod.sha1]
+      if (!file || file.hashes.sha1 === mod.sha1 || v.id === now?.id) continue
+      if (now && new Date(v.date_published) <= new Date(now.date_published)) continue // jamais de retour en arrière
+      found[mod.name] = { platform: 'modrinth', version: v.version_number, file: file.filename, url: file.url, sha1: file.hashes.sha1, size: file.size }
+    }
+  } catch {}
+
+  // CurseForge : pour les fichiers que Modrinth ne connaît pas
+  const rest = mods.filter((x) => !known.has(x.name))
+  if (rest.length && settings.curseforgeKey()) {
+    try {
+      const prints = new Map(rest.map((x) => [cfFingerprint(x.buf), x]))
+      const res = await cf('/fingerprints/432', { fingerprints: [...prints.keys()] })
+      const params = new URLSearchParams({ gameVersion: inst.version, pageSize: '1' })
+      if (CF_LOADER[inst.loader]) params.set('modLoaderType', String(CF_LOADER[inst.loader]))
+      await Promise.all((res.data?.exactMatches || []).map(async (match) => {
+        const mod = prints.get(match.file.fileFingerprint)
+        if (!mod) return
+        const newest = (await cf(`/mods/${match.id}/files?${params}`)).data?.[0]
+        if (!newest || newest.id === match.file.id || new Date(newest.fileDate) <= new Date(match.file.fileDate)) return
+        found[mod.name] = {
+          platform: 'curseforge', version: newest.displayName, file: newest.fileName, url: newest.downloadUrl, size: newest.fileLength,
+          sha1: newest.hashes?.find((h) => h.algo === 1)?.value || null
+        }
+      }))
+    } catch {}
+  }
+
+  modUpdates.set(instanceId, found)
+  return Object.fromEntries(Object.entries(found).map(([name, u]) => [name, { version: u.version, file: u.file, blocked: !u.url }]))
+}
+
+// Remplace les fichiers par leur nouvelle version (une fois téléchargée, l'ancienne part à la corbeille)
+function updateMods(instanceId, names) {
+  const inst = store.listInstances().find((i) => i.id === instanceId)
+  const updates = modUpdates.get(instanceId) || {}
+  const chosen = names.filter((n) => updates[n]?.url)
+  if (!inst || !chosen.length) throw new Error('Aucune mise à jour disponible pour ces mods.')
+  const dir = path.join(store.gameDir(instanceId), 'mods')
+  const title = chosen.length > 1 ? `Mise à jour de ${chosen.length} mods` : `Mise à jour de ${updates[chosen[0]].file}`
+  return downloads.start(title, `« ${inst.name} »`, async (task) => {
+    const files = chosen.map((name) => {
+      const u = updates[name]
+      return { name, url: u.url, sha1: u.sha1, size: u.size, dest: insideDir(dir, u.file + (name.endsWith('.disabled') ? '.disabled' : '')) }
+    })
+    const failed = await downloads.downloadFiles(task, files)
+    const failedSet = new Set(failed.map((f) => f.dest))
+    for (const f of files) {
+      if (failedSet.has(f.dest) || path.basename(f.dest) === f.name) continue
+      try { await shell.trashItem(path.join(dir, f.name)) } catch { fs.rmSync(path.join(dir, f.name), { force: true }) }
+      delete updates[f.name]
+    }
+    if (failed.length) throw new Error(`${failed.length} mod(s) en échec : ${failed[0].error}`)
+    task.detail = `${files.length} mod${files.length > 1 ? 's' : ''} à jour`
+  })
+}
+
+module.exports = { search, filters, projectVersions, projectDetails, installToInstance, installModpack, onInstancesChanged, checkModUpdates, updateMods }

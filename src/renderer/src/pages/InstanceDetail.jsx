@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { ArrowLeft, FileText, Puzzle, Image as ImageIcon, Sparkles, Camera, Settings2, MoreVertical, ChevronRight, FolderOpen, Copy, Upload, MemoryStick, Server, Trash2, Plus, Search, Wrench, Loader2, X, ImagePlus } from 'lucide-react'
+import { ArrowLeft, FileText, Puzzle, Image as ImageIcon, Sparkles, Camera, Settings2, MoreVertical, ChevronRight, FolderOpen, Copy, Upload, MemoryStick, Server, Trash2, Plus, Search, Wrench, Loader2, X, ImagePlus, ArrowUpCircle, RefreshCw } from 'lucide-react'
 import Banner, { Logo } from '../components/Banner'
 import PlayButton from '../components/PlayButton'
 import { Menu, VersionChip, LoaderChip, ProfileChip, GrassBlock, formatPlayTime } from '../components/ui'
@@ -43,6 +43,34 @@ function FileList({ inst, folder, onAdd, toast }) {
   const isMods = folder === 'mods'
   const enabled = (files || []).filter((f) => f.enabled).length
 
+  // Mises à jour des mods : vérifiées à l'ouverture de l'onglet, appliquées en tâche de fond
+  const [updates, setUpdates] = useState(null) // null = vérification en cours
+  const [updating, setUpdating] = useState({}) // id de tâche -> fichiers concernés
+  const check = useCallback(() => {
+    if (!isMods || inst.loader === 'vanilla') return setUpdates({})
+    setUpdates(null)
+    api.content.checkModUpdates(inst.id).then(setUpdates).catch(() => setUpdates({}))
+  }, [inst.id, inst.loader, isMods])
+  useEffect(() => { check() }, [check])
+  useEffect(() => {
+    if (!Object.keys(updating).length) return
+    return api.downloads.onUpdate((tasks) => {
+      const done = Object.keys(updating).filter((id) => tasks.find((t) => t.id === id && t.status !== 'running'))
+      if (!done.length) return
+      setUpdating((u) => { const n = { ...u }; done.forEach((id) => delete n[id]); return n })
+      load()
+      check()
+    })
+  }, [updating, load, check])
+  const busyNames = new Set(Object.values(updating).flat())
+  const available = Object.entries(updates || {}).filter(([name, u]) => !u.blocked && !busyNames.has(name)).map(([name]) => name)
+  const runUpdate = async (names) => {
+    try {
+      const taskId = await api.content.updateMods(inst.id, names)
+      setUpdating((u) => ({ ...u, [taskId]: names }))
+    } catch (e) { toast(e.message, 'error') }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-3">
@@ -53,7 +81,21 @@ function FileList({ inst, folder, onAdd, toast }) {
         {onAdd && <button className="btn-primary" onClick={onAdd}><Plus className="h-4 w-4" /> Ajouter</button>}
         <button className="btn-ghost" onClick={() => api.instances.openSubfolder(inst.id, folder).catch((e) => toast(e.message, 'error'))}><FolderOpen className="h-4 w-4" /> Ouvrir le dossier</button>
       </div>
-      {files && <p className="text-sm text-cream-muted">{files.length} élément{files.length > 1 ? 's' : ''}{isMods ? ` · ${enabled} activé${enabled > 1 ? 's' : ''}` : ''}</p>}
+      {files && (
+        <div className="flex min-h-9 flex-wrap items-center gap-3 text-sm text-cream-muted">
+          <span>{files.length} élément{files.length > 1 ? 's' : ''}{isMods ? ` · ${enabled} activé${enabled > 1 ? 's' : ''}` : ''}</span>
+          {isMods && updates === null && <span className="flex items-center gap-1.5"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Recherche de mises à jour…</span>}
+          {isMods && updates && available.length > 0 && (
+            <>
+              <span className="font-semibold text-ember-400">{available.length} mise{available.length > 1 ? 's' : ''} à jour disponible{available.length > 1 ? 's' : ''}</span>
+              <button className="btn-primary ml-auto px-4 py-1.5 text-sm" onClick={() => runUpdate(available)}><ArrowUpCircle className="h-4 w-4" /> Tout mettre à jour</button>
+            </>
+          )}
+          {isMods && updates && available.length === 0 && !busyNames.size && files.length > 0 && (
+            <button className="ml-auto flex items-center gap-1.5 hover:text-cream" title="Vérifier à nouveau" onClick={check}><RefreshCw className="h-3.5 w-3.5" /> Aucune mise à jour disponible</button>
+          )}
+        </div>
+      )}
       {!files && <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-ember-400" /></div>}
       {files && files.length === 0 && <div className="panel px-6 py-12 text-center text-cream-muted">Rien ici pour l’instant.</div>}
       <div className="space-y-2">
@@ -61,7 +103,10 @@ function FileList({ inst, folder, onAdd, toast }) {
           <div key={f.name} className={`flex items-center gap-4 rounded-tl border border-bark-700 bg-bark-850/85 px-4 py-3 ${f.enabled ? '' : 'opacity-55'}`}>
             <div className="min-w-0 flex-1">
               <div className="truncate font-semibold">{f.title || f.name.replace(/\.disabled$/, '')}</div>
-              <div className="truncate text-xs text-cream-muted">{[f.version, f.title ? f.name : null, fmtSize(f.size)].filter(Boolean).join(' · ')}</div>
+              <div className="truncate text-xs text-cream-muted">
+                {[f.version, f.title ? f.name : null, fmtSize(f.size)].filter(Boolean).join(' · ')}
+                {isMods && updates?.[f.name] && <span className="text-ember-400"> · nouvelle version : {updates[f.name].version}</span>}
+              </div>
             </div>
             {isMods && (
               <button
@@ -70,6 +115,17 @@ function FileList({ inst, folder, onAdd, toast }) {
                 className={`relative h-7 w-12 shrink-0 rounded-full transition ${f.enabled ? 'bg-ember-500' : 'bg-bark-700'}`}
               >
                 <span className={`absolute top-1 h-5 w-5 rounded-full bg-white transition-all ${f.enabled ? 'left-6' : 'left-1'}`} />
+              </button>
+            )}
+            {isMods && busyNames.has(f.name) && <Loader2 className="mx-2 h-5 w-5 shrink-0 animate-spin text-ember-400" />}
+            {isMods && !busyNames.has(f.name) && updates?.[f.name] && (
+              <button
+                title={updates[f.name].blocked ? `Version ${updates[f.name].version} disponible, mais l’auteur bloque son téléchargement depuis les launchers` : `Mettre à jour vers ${updates[f.name].version}`}
+                disabled={updates[f.name].blocked}
+                onClick={() => runUpdate([f.name])}
+                className="rounded-lg p-2 text-ember-400 enabled:hover:bg-ember-500/15 disabled:opacity-40"
+              >
+                <ArrowUpCircle className="h-5 w-5" />
               </button>
             )}
             <button title="Mettre à la corbeille" onClick={async () => { await api.instances.trashFile(inst.id, folder, f.name); toast(`« ${f.title || f.name} » déplacé dans la corbeille.`); load() }} className="rounded-lg p-2 text-cream-muted hover:bg-red-500/10 hover:text-red-400">

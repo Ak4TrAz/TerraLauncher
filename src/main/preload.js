@@ -57,7 +57,9 @@ contextBridge.exposeInMainWorld('terra', {
     details: (platform, id) => call('content:details', platform, id),
     filters: (platform, type) => call('content:filters', platform, type),
     install: (project, instanceId) => call('content:install', project, instanceId),
-    installModpack: (opts) => call('content:installModpack', opts)
+    installModpack: (opts) => call('content:installModpack', opts),
+    checkModUpdates: (instanceId) => call('content:checkModUpdates', instanceId),
+    updateMods: (instanceId, names) => call('content:updateMods', instanceId, names)
   },
   game: {
     launch: (id, opts) => call('game:launch', id, opts),
