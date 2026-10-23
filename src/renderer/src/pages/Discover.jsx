@@ -1,12 +1,39 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Search, LayoutGrid, List, Download, ExternalLink, Loader2, Compass, KeyRound } from 'lucide-react'
+import { Search, LayoutGrid, List, Download, ExternalLink, Loader2, Compass, KeyRound, ArrowLeft, X } from 'lucide-react'
 import { api, LOADERS } from '../api'
-import { Select, Menu, VersionChip } from '../components/ui'
+import { Select, Menu, VersionChip, LoaderChip } from '../components/ui'
+import { Logo } from '../components/Banner'
 import ProjectPage from './ProjectPage'
 import FilterPanel from '../components/FilterPanel'
 
 const NO_FILTERS = { categories: [], loaders: [], gameVersions: [], environment: null }
+
+// Mods compatibles avec l'instance visée : même version, même chargeur (Quilt accepte aussi les mods Fabric)
+function filtersFor(target, type) {
+  if (!target || type !== 'mod') return NO_FILTERS
+  const loaders = target.loader === 'vanilla' ? [] : target.loader === 'quilt' ? ['quilt', 'fabric'] : [target.loader]
+  return { ...NO_FILTERS, loaders, gameVersions: target.version ? [target.version] : [] }
+}
+
+// Rappel de l'instance qui recevra ce qu'on installe depuis Découvrir
+function TargetBar({ target, onBack, onClear }) {
+  return (
+    <div className="flex items-center gap-4 rounded-tl-lg border border-ember-500/40 bg-ember-500/10 p-3 pr-4">
+      <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg border-2 border-white/70"><Logo instance={target} /></div>
+      <div className="min-w-0 flex-1">
+        <div className="text-xs font-semibold uppercase tracking-wide text-ember-300">Installation dans l’instance</div>
+        <div className="truncate text-lg font-bold">{target.name}</div>
+      </div>
+      <div className="hidden shrink-0 gap-2 md:flex">
+        <VersionChip version={target.version} />
+        <LoaderChip loader={target.loader} />
+      </div>
+      <button className="btn-ghost shrink-0 px-4 py-2" onClick={onBack}><ArrowLeft className="h-4 w-4" /> Retour à l’instance</button>
+      <button className="shrink-0 rounded-lg p-1.5 text-cream-muted hover:bg-bark-800 hover:text-cream" title="Ne plus cibler cette instance" onClick={onClear}><X className="h-5 w-5" /></button>
+    </div>
+  )
+}
 
 const TYPES = [
   { value: 'modpack', label: 'Modpacks', placeholder: 'Rechercher un modpack…' },
@@ -92,7 +119,7 @@ function ProjectRow({ hit, onInstall, onOpen }) {
 
 const storedView = () => { try { return localStorage.getItem('terra.discoverView') || 'grid' } catch { return 'grid' } }
 
-export default function Discover({ onInstall, onOpenSettings, devMode, initialType }) {
+export default function Discover({ onInstall, onOpenSettings, devMode, initialType, target, onBackToTarget, onClearTarget }) {
   const [platform, setPlatform] = useState('modrinth')
   const [type, setType] = useState(initialType || 'modpack')
   const [filters, setFilters] = useState(NO_FILTERS)
@@ -110,7 +137,7 @@ export default function Discover({ onInstall, onOpenSettings, devMode, initialTy
   // Filtres disponibles : rechargés (et remis à zéro) quand la plateforme ou le type change
   useEffect(() => {
     let cancelled = false
-    setFilters(NO_FILTERS)
+    setFilters(filtersFor(target, type))
     setDefs(null)
     setDefsLoading(true)
     api.content.filters(platform, type)
@@ -118,7 +145,7 @@ export default function Discover({ onInstall, onOpenSettings, devMode, initialTy
       .catch(() => !cancelled && setDefs({ groups: [], loaders: [], environment: false }))
       .finally(() => !cancelled && setDefsLoading(false))
     return () => { cancelled = true }
-  }, [platform, type])
+  }, [platform, type, target?.id])
 
   // Recherche (avec un petit délai pendant la frappe)
   useEffect(() => {
@@ -158,6 +185,7 @@ export default function Discover({ onInstall, onOpenSettings, devMode, initialTy
     <>
     {opened && <ProjectPage hit={opened} onBack={closeProject} onInstall={onInstall} />}
     <div className={opened ? 'hidden' : 'space-y-6'}>
+      {target && <TargetBar target={target} onBack={onBackToTarget} onClear={onClearTarget} />}
       <div className="flex items-center gap-4">
         <div className="flex h-14 w-14 items-center justify-center rounded-full bg-ember-500 shadow-[0_6px_20px_-6px_rgba(228,107,26,0.8)]">
           <Compass className="h-8 w-8 text-white" />

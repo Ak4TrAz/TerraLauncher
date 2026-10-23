@@ -272,7 +272,7 @@ export default function App() {
               <CreateInstance profiles={profiles} itemDefs={itemDefs} onCancel={() => setTab('library')} onCreate={createInstance} onCreateProfile={() => { setTab('profiles'); setProfileModal({ profile: null }) }} />
             )}
             {tab === 'profiles' && <Profiles profiles={profiles} instances={instances} actions={profileActions} />}
-            {tab === 'discover' && <Discover key={discover.type || 'all'} initialType={discover.type} onInstall={setInstalling} devMode={settings?.devMode} onOpenSettings={() => openSettings('connections')} />}
+            {tab === 'discover' && <Discover key={discover.type || 'all'} initialType={discover.type} target={instances.find((i) => i.id === discover.target)} onBackToTarget={() => { setDetailId(discover.target); setTab('instance') }} onClearTarget={() => setDiscover((d) => ({ ...d, target: null }))} onInstall={setInstalling} devMode={settings?.devMode} onOpenSettings={() => openSettings('connections')} />}
             {tab === 'instance' && (
               <InstanceDetail
                 inst={instances.find((i) => i.id === detailId)}
