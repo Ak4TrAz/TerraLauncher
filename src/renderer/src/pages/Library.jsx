@@ -156,13 +156,15 @@ function Row({ inst, profile, actions }) {
 
 export default function Library({ instances, profiles, actions }) {
   const [query, setQuery] = useState('')
-  const [view, setView] = useState('grid')
+  const [view, setViewState] = useState(() => { try { return localStorage.getItem('terra.libraryView') || 'grid' } catch { return 'grid' } })
+  const setView = (v) => { setViewState(v); try { localStorage.setItem('terra.libraryView', v) } catch {} }
   const [sort, setSort] = useState('lastPlayed')
   const profileOf = (inst) => profiles.find((p) => p.id === inst.profileId)
 
   const sorted = useMemo(() => sortInstances(instances, sort), [instances, sort])
   const filtered = sorted.filter((i) => i.name.toLowerCase().includes(query.toLowerCase()))
-  const hero = !query && sort === 'lastPlayed' ? filtered[0] : null
+  // La grande bannière de la dernière partie n'existe qu'en affichage grille
+  const hero = view === 'grid' && !query && sort === 'lastPlayed' ? filtered[0] : null
   const rest = hero ? filtered.slice(1) : filtered
 
   return (
