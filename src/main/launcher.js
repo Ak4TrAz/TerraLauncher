@@ -207,7 +207,24 @@ async function ensureDependencies(task, resolved) {
 // ---------- Préparation complète ----------
 
 // Installe tout ce qu'il faut pour lancer l'instance. force = tout revérifier (« Réparer »).
-async function prepare(instanceId, { force = false } = {}) {
+// Une seule préparation à la fois par instance (création, import et clic sur Jouer peuvent se croiser)
+const pending = new Map() // instanceId -> Promise
+function prepare(instanceId, options = {}) {
+  if (!options.force && pending.has(instanceId)) return pending.get(instanceId)
+  const job = doPrepare(instanceId, options).finally(() => pending.delete(instanceId))
+  pending.set(instanceId, job)
+  return job
+}
+
+// Télécharge tout ce qu'il faut pour jouer dès la création/l'import, sans attendre le clic sur Jouer
+function prepareInBackground(instanceId) {
+  notifyStatus({ instanceId, state: 'preparing' })
+  prepare(instanceId)
+    .catch(() => {}) // l'erreur reste visible dans les téléchargements ; Jouer réessaiera
+    .finally(() => !running.has(instanceId) && notifyStatus({ instanceId, state: 'stopped' }))
+}
+
+async function doPrepare(instanceId, { force = false } = {}) {
   const inst = store.listInstances().find((i) => i.id === instanceId)
   if (!inst) throw new Error('Instance introuvable.')
   if (inst.installing) throw new Error('Le modpack est encore en cours d’installation.')
@@ -353,4 +370,4 @@ function stop(instanceId) {
 
 const totalMemoryMb = () => Math.round(os.totalmem() / 1024 / 1024)
 
-module.exports = { init, prepare, launch, stop, isRunning, totalMemoryMb }
+module.exports = { init, prepare, prepareInBackground, launch, stop, isRunning, totalMemoryMb }

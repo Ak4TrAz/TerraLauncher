@@ -337,10 +337,9 @@ async function installModpack({ project, versionId, name, profileId, items }, da
       let warning = null
       if (project.platform === 'curseforge') warning = await installCurseforgePack(task, project, versionId, inst, game)
       else await installModrinthPack(task, project, versionId, inst, game)
-      const current = store.listInstances().find((i) => i.id === inst.id)
-      downloads.installVersion(dataRoot, current.version)
       if (profileId) store.reapplyProfile(inst.id, profileId, items)
       store.updateInstance(inst.id, { installing: false, installError: null })
+      require('./launcher').prepareInBackground(inst.id)
       task.detail = warning || 'Modpack installé'
     } catch (err) {
       store.updateInstance(inst.id, { installing: false, installError: err.message })

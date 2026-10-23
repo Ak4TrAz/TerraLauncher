@@ -191,6 +191,7 @@ function importInstance({ launcher, name, dir, version, loader, loaderVersion, i
       }
       store.updateInstance(inst.id, { installing: false, installError: null })
       task.detail = `${files.length} fichiers importés depuis ${launcher}`
+      require('./launcher').prepareInBackground(inst.id)
     } catch (err) {
       store.updateInstance(inst.id, { installing: false, installError: err.message })
       throw err

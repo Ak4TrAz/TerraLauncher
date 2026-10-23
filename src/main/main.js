@@ -104,7 +104,7 @@ app.whenReady().then(() => {
   handle('instances:list', () => store.listInstances())
   handle('instances:create', (data) => {
     const inst = store.createInstance(data)
-    downloads.installVersion(dataRoot, inst.version)
+    launcher.prepareInBackground(inst.id)
     return inst
   })
 
