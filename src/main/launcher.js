@@ -277,18 +277,18 @@ async function launch(instanceId, session, options, { join } = {}) {
     const inst = store.listInstances().find((i) => i.id === instanceId)
     const game = store.gameDir(instanceId)
 
+    // Chemins réels : si le dossier est redirigé (ex. application empaquetée), Fabric ne reconnaît
+    // plus ses propres jars et plante (« trying to load FabricLoaderImpl from target class loader »)
+    const real = (p) => { try { return fs.realpathSync.native(p) } catch { return p } }
+
+    // Windows associe la préférence GPU au chemin exact de l'exécutable lancé
     if (options.gpu !== false) {
-      await forceHighPerformanceGpu(java.javaw)
-      await forceHighPerformanceGpu(java.java)
+      for (const exe of new Set([java.javaw, java.java, real(java.javaw), real(java.java)])) await forceHighPerformanceGpu(exe)
     }
 
     const maxMemory = Math.max(1024, Number(inst.memory || options.memory || 4096))
     // Les arguments par défaut de @xmcl contiennent -Xmx2G, qui écraserait la RAM choisie
     const extraJVMArgs = [...core.DEFAULT_EXTRA_JVM_ARGS.filter((a) => !/^-Xm[sx]/.test(a)), ...(options.jvmArgs || '').split(/\s+/).filter(Boolean)]
-
-    // Chemins réels : si le dossier est redirigé (ex. application empaquetée), Fabric ne reconnaît
-    // plus ses propres jars et plante (« trying to load FabricLoaderImpl from target class loader »)
-    const real = (p) => { try { return fs.realpathSync.native(p) } catch { return p } }
 
     const proc = await core.launch({
       gamePath: real(game),
