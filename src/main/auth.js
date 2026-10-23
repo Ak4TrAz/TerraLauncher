@@ -74,6 +74,7 @@ async function minecraftFromMicrosoft(msAccessToken) {
 
   const mc = await postJson('https://api.minecraftservices.com/authentication/login_with_xbox', { identityToken: `XBL3.0 x=${uhs};${xsts.json.Token}` })
   if (!mc.res.ok) {
+    console.error('[auth] login_with_xbox', mc.res.status, mc.text)
     if (mc.res.status === 403 || /Invalid app registration/i.test(mc.text))
       throw new Error("Mojang n'a pas encore autorisé TerraLauncher à se connecter à Minecraft (validation en attente). Réessaie plus tard.")
     throw new Error(`Minecraft a refusé la connexion (${mc.res.status}).`)

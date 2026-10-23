@@ -15,6 +15,7 @@ import ImportModal from './components/ImportModal'
 import InstallModal from './components/InstallModal'
 import DownloadsButton from './components/DownloadsButton'
 import { Fox } from './components/Sprites'
+import { SkinHead } from './components/ui'
 import ProfileModal from './components/ProfileModal'
 import ReapplyModal from './components/ReapplyModal'
 import ConfirmModal from './components/ConfirmModal'
@@ -61,7 +62,7 @@ function AccountChip({ accounts, onSwitch, onManage }) {
   return (
     <div className="no-drag relative" ref={ref}>
       <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-3 rounded-xl px-2 py-1.5 transition hover:bg-white/5">
-        <img src={`https://mc-heads.net/avatar/${active.uuid}/64`} className="pixel h-10 w-10 rounded-full border-2 border-bark-600 bg-bark-800" alt="" />
+        <SkinHead account={active} size={40} className="rounded-full bg-bark-800 ring-2 ring-bark-600" />
         <span className="max-w-[140px] truncate text-[17px] font-medium">{active.name}</span>
         <ChevronDown className={`h-4 w-4 text-cream-muted transition ${open ? 'rotate-180' : ''}`} />
       </button>
@@ -70,7 +71,7 @@ function AccountChip({ accounts, onSwitch, onManage }) {
           <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.12 }} className="absolute right-0 top-full z-50 mt-2 w-72 overflow-hidden rounded-tl-lg border border-bark-700 bg-bark-850 p-1.5 shadow-[0_20px_50px_-10px_rgba(0,0,0,0.85)]">
             {accounts.map((a) => (
               <button key={a.uuid} onClick={() => { onSwitch(a.uuid); setOpen(false) }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-bark-700/70">
-                <img src={`https://mc-heads.net/avatar/${a.uuid}/32`} className="pixel h-7 w-7 rounded-md" alt="" />
+                <SkinHead account={a} size={28} className="rounded-md" />
                 <span className="flex-1 font-medium">{a.name}</span>
                 {a.active && <Check className="h-4 w-4 text-ember-400" />}
               </button>

@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { Plus, Check, Play, LogOut, Loader2, ArrowLeft, KeyRound, AlertTriangle } from 'lucide-react'
 import { api } from '../api'
-import { CubesIcon, GrassBlock } from '../components/ui'
+import { CubesIcon, GrassBlock, SkinHead } from '../components/ui'
 import { Fox, Leaf } from '../components/Sprites'
 
 function MicrosoftLogo({ className = 'h-5 w-5' }) {
@@ -16,7 +16,7 @@ function MicrosoftLogo({ className = 'h-5 w-5' }) {
 function AccountCard({ acc, onUse, onRemove }) {
   return (
     <div className={`flex items-center gap-6 rounded-tl-lg border p-6 ${acc.active ? 'border-ember-500 bg-gradient-to-br from-ember-500/15 to-transparent' : 'border-bark-700 bg-bark-850/85'}`}>
-      <img src={`https://mc-heads.net/avatar/${acc.uuid}/128`} className="pixel h-28 w-28 rounded-full border-4 border-bark-600 bg-bark-800" alt="" />
+      <SkinHead account={acc} size={112} className="rounded-full bg-bark-800 ring-4 ring-bark-600" />
       <div className="flex-1 space-y-2">
         <div className="text-3xl font-bold">{acc.name}</div>
         {acc.active && <span className="inline-flex items-center gap-1.5 rounded-full bg-[#1f5a2a] px-3 py-1 text-sm font-semibold text-[#9be3a8]"><Check className="h-4 w-4" /> Compte actif</span>}

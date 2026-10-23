@@ -243,6 +243,21 @@ export function ProfileAvatar({ profile, size = 'h-12 w-12 text-xl' }) {
   )
 }
 
+// Tête du joueur découpée dans son vrai skin (visage + calque du chapeau), sans passer par un cache externe
+export function SkinHead({ account, size, className = '' }) {
+  if (!account.skin) return <img src={`https://mc-heads.net/avatar/${account.uuid}/${size * 2}`} className={`pixel ${className}`} style={{ width: size, height: size }} alt="" />
+  const layer = (x) => ({
+    position: 'absolute', inset: 0, imageRendering: 'pixelated',
+    backgroundImage: `url(${account.skin})`, backgroundSize: `${size * 8}px auto`, backgroundPosition: `-${size * x}px -${size}px`
+  })
+  return (
+    <div className={`relative shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
+      <div style={layer(1)} />
+      <div style={layer(5)} />
+    </div>
+  )
+}
+
 // 3 h 25 min, 12 min, moins d'une minute
 export function formatPlayTime(ms) {
   const min = Math.floor((ms || 0) / 60000)
