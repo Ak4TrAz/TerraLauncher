@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { ArrowLeft, FileText, Puzzle, Image as ImageIcon, Sparkles, Camera, Settings2, MoreVertical, ChevronRight, FolderOpen, Copy, Upload, MemoryStick, Server, Trash2, Plus, Search, Wrench, Loader2, X, ImagePlus, ArrowUpCircle, RefreshCw } from 'lucide-react'
+import { ArrowLeft, FileText, Puzzle, Image as ImageIcon, Sparkles, Camera, Settings2, MoreVertical, ChevronRight, FolderOpen, Copy, Upload, MemoryStick, Server, Trash2, Plus, Search, Wrench, Loader2, X, ImagePlus, Download, RefreshCw } from 'lucide-react'
 import Banner, { Logo } from '../components/Banner'
 import PlayButton from '../components/PlayButton'
 import { Menu, VersionChip, LoaderChip, ProfileChip, GrassBlock, formatPlayTime } from '../components/ui'
@@ -88,7 +88,7 @@ function FileList({ inst, folder, onAdd, toast }) {
           {isMods && updates && available.length > 0 && (
             <>
               <span className="font-semibold text-ember-400">{available.length} mise{available.length > 1 ? 's' : ''} à jour disponible{available.length > 1 ? 's' : ''}</span>
-              <button className="btn-primary ml-auto px-4 py-1.5 text-sm" onClick={() => runUpdate(available)}><ArrowUpCircle className="h-4 w-4" /> Tout mettre à jour</button>
+              <button className="btn-primary ml-auto px-4 py-1.5 text-sm" onClick={() => runUpdate(available)}><Download className="h-4 w-4" /> Tout mettre à jour</button>
             </>
           )}
           {isMods && updates && available.length === 0 && !busyNames.size && files.length > 0 && (
@@ -125,7 +125,7 @@ function FileList({ inst, folder, onAdd, toast }) {
                 onClick={() => runUpdate([f.name])}
                 className="rounded-lg p-2 text-ember-400 enabled:hover:bg-ember-500/15 disabled:opacity-40"
               >
-                <ArrowUpCircle className="h-5 w-5" />
+                <Download className="h-5 w-5" />
               </button>
             )}
             <button title="Mettre à la corbeille" onClick={async () => { await api.instances.trashFile(inst.id, folder, f.name); toast(`« ${f.title || f.name} » déplacé dans la corbeille.`); load() }} className="rounded-lg p-2 text-cream-muted hover:bg-red-500/10 hover:text-red-400">
