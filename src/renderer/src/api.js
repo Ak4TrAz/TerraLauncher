@@ -129,6 +129,11 @@ function createMock() {
       clear: async () => { dl = dl.filter((t) => t.status === 'running'); dlEmit() },
       onUpdate: (fn) => { dlListeners.add(fn); return () => dlListeners.delete(fn) }
     },
+    external: {
+      scan: async () => [],
+      fromFolder: async (dir) => ({ launcher: 'Dossier', name: dir.split(/[\\/]/).pop(), dir, version: null, loader: 'vanilla', loaderVersion: null, imported: false }),
+      importInstance: desktopOnly
+    },
     importer: {
       sources: async () => [
         ...load('mock.instances').map((i) => ({ launcher: 'TerraLauncher', name: i.name, dir: 'terra/' + i.id })),

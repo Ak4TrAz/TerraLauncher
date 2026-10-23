@@ -81,6 +81,11 @@ contextBridge.exposeInMainWorld('terra', {
     scan: (dir) => call('import:scan', dir),
     run: (profileId, dir, paths) => call('import:run', profileId, dir, paths)
   },
+  external: {
+    scan: () => call('external:scan'),
+    fromFolder: (dir) => call('external:fromFolder', dir),
+    importInstance: (item) => call('external:import', item)
+  },
   instances: {
     list: () => call('instances:list'),
     create: (data) => call('instances:create', data),

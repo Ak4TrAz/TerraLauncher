@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Search, LayoutGrid, List, ArrowUpDown, Play, MoreVertical, Plus, Clock, FolderOpen, Image, RefreshCw, Save, Trash2, Sparkles, Loader2, AlertTriangle, Wrench, Server, Info, ImagePlus, RotateCcw } from 'lucide-react'
+import { Search, LayoutGrid, List, ArrowUpDown, Play, MoreVertical, Plus, Clock, FolderOpen, Image, RefreshCw, Save, Trash2, Sparkles, Loader2, AlertTriangle, Wrench, Server, Info, ImagePlus, RotateCcw, Download } from 'lucide-react'
 import Banner, { Logo } from '../components/Banner'
 import PlayButton from '../components/PlayButton'
 import { Menu, Select, VersionChip, LoaderChip, ProfileChip, CubesIcon, formatPlayTime } from '../components/ui'
@@ -18,7 +18,7 @@ function sortInstances(list, sort) {
   return [...list].sort((a, b) => recent(b) - recent(a))
 }
 
-function PageTitle({ onCreate }) {
+function PageTitle({ onCreate, onImport }) {
   return (
     <div className="flex items-center gap-4">
       <CubesIcon />
@@ -26,6 +26,9 @@ function PageTitle({ onCreate }) {
         <h1 className="text-3xl font-extrabold xl:text-[34px] leading-tight tracking-tight">Votre bibliothèque</h1>
         <p className="text-[15px] text-orange-50/60">Gérez et lancez vos instances Minecraft Java.</p>
       </div>
+      <button className="btn-ghost px-5 py-3 text-base" onClick={onImport}>
+        <Download className="h-5 w-5" /> Importer
+      </button>
       <button className="btn-primary px-6 py-3 text-base" onClick={onCreate}>
         <Plus className="h-5 w-5" /> Créer une instance
       </button>
@@ -169,7 +172,7 @@ export default function Library({ instances, profiles, actions }) {
 
   return (
     <div className="space-y-6">
-      <PageTitle onCreate={actions.create} />
+      <PageTitle onCreate={actions.create} onImport={actions.importInstances} />
 
       <div className="flex gap-3">
         <div className="relative flex-1">
@@ -193,7 +196,10 @@ export default function Library({ instances, profiles, actions }) {
             <h2 className="text-xl font-bold">Aucune instance pour l'instant</h2>
             <p className="mt-1 text-orange-50/55">Crée ta première instance et importe ton profil pour retrouver tes touches et tes shaders.</p>
           </div>
-          <button className="btn-primary" onClick={actions.create}><Plus className="h-5 w-5" /> Créer une instance</button>
+          <div className="flex gap-3">
+            <button className="btn-ghost" onClick={actions.importInstances}><Download className="h-5 w-5" /> Importer depuis un autre launcher</button>
+            <button className="btn-primary" onClick={actions.create}><Plus className="h-5 w-5" /> Créer une instance</button>
+          </div>
         </div>
       ) : (
         <>

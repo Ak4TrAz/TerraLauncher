@@ -12,6 +12,7 @@ import InstanceDetail from './pages/InstanceDetail'
 import { instanceMenu } from './pages/Library'
 import CreateInstance from './pages/CreateInstance'
 import ImportModal from './components/ImportModal'
+import ImportInstancesModal from './components/ImportInstancesModal'
 import InstallModal from './components/InstallModal'
 import DownloadsButton from './components/DownloadsButton'
 import { Fox } from './components/Sprites'
@@ -129,6 +130,7 @@ export default function App() {
   const [profiles, setProfiles] = useState([])
   const [itemDefs, setItemDefs] = useState([])
   const [importing, setImporting] = useState(null)
+  const [importingInstances, setImportingInstances] = useState(false)
   const [installing, setInstalling] = useState(null)
   const [profileModal, setProfileModal] = useState(null) // { profile } | null
   const [reapplying, setReapplying] = useState(null)
@@ -186,6 +188,7 @@ export default function App() {
 
   const instanceActions = {
     create: () => setTab('create'),
+    importInstances: () => setImportingInstances(true),
     statusOf: (id) => gameStatus[id],
     open: (inst) => { setDetailId(inst.id); setTab('instance') },
     join: (inst) => instanceActions.play(inst, { join: true }),
@@ -287,6 +290,7 @@ export default function App() {
       </main>
 
       <ImportModal profile={importing} onClose={() => setImporting(null)} onDone={importDone} />
+      <ImportInstancesModal open={importingInstances} onClose={() => setImportingInstances(false)} onDone={() => { setImportingInstances(false); refresh() }} toast={toast} />
       <InstallModal hit={installing} preferredInstance={discover.target} onClose={() => setInstalling(null)} instances={instances} profiles={profiles} itemDefs={itemDefs} onDone={(msg) => { refresh(); toast(msg, 'success') }} onError={(msg) => toast(msg, 'error')} />
       <ProfileModal open={!!profileModal} profile={profileModal?.profile} onClose={() => setProfileModal(null)} onSave={saveProfile} />
       <ReapplyModal instance={reapplying} onClose={() => setReapplying(null)} onApply={reapply} profiles={profiles} itemDefs={itemDefs} />

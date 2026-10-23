@@ -8,6 +8,7 @@ const settings = require('./settings')
 const auth = require('./auth')
 const content = require('./content')
 const launcher = require('./launcher')
+const external = require('./external')
 const { autoUpdater } = require('electron-updater')
 
 const isDev = process.env.VITE_DEV === '1'
@@ -87,6 +88,15 @@ app.whenReady().then(() => {
   })
   handle('import:scan', (dir) => store.scanSource(dir))
   handle('import:run', (profileId, dir, paths) => store.importSelection(profileId, dir, paths))
+
+  // Instances complètes des autres launchers → bibliothèque
+  const notifyInstances = () => win && !win.isDestroyed() && win.webContents.send('instances:changed')
+  handle('external:scan', () => external.scan(app.getPath('appData'), app.getPath('home')))
+  handle('external:fromFolder', async (dir) => {
+    const known = (await external.scan(app.getPath('appData'), app.getPath('home'))).find((x) => x.dir.toLowerCase() === dir.toLowerCase())
+    return known || { launcher: 'Dossier', name: path.basename(dir), dir, ...external.guess(path.basename(dir)), loaderVersion: null, imported: false }
+  })
+  handle('external:import', (item) => external.importInstance(item, notifyInstances))
 
   handle('instances:list', () => store.listInstances())
   handle('instances:create', (data) => {
