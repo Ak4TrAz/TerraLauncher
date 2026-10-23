@@ -257,7 +257,7 @@ export default function App() {
       {settings?.animations !== false && <Leaves />}
       <WindowControls />
       {update?.state === 'ready' && (
-        <div className="relative z-40 flex items-center justify-center gap-4 bg-ember-500 px-4 py-2 text-sm font-semibold text-white">
+        <div className="no-drag relative z-40 flex items-center justify-center gap-4 bg-ember-500 px-4 py-2 text-sm font-semibold text-white">
           La version {update.version} de TerraLauncher est prête.
           <button className="rounded-lg bg-white/20 px-3 py-1 hover:bg-white/30" onClick={() => api.app.installUpdate()}>Redémarrer pour mettre à jour</button>
         </div>
