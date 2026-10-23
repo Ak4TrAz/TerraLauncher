@@ -32,6 +32,15 @@ function InfoCard({ icon, title, value, onClick }) {
   )
 }
 
+// Logo d'un mod : celui intégré au .jar, sinon celui de sa page Modrinth/CurseForge, sinon une pièce de puzzle
+function ModIcon({ inst, file, remote }) {
+  const local = file.hasIcon ? `terra://modicon/${inst.id}/${encodeURIComponent(file.name)}?v=${Math.round(file.mtime)}` : null
+  const [failed, setFailed] = useState(false)
+  const src = local && !failed ? local : remote
+  if (!src) return <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-bark-800"><Puzzle className="h-5 w-5 text-cream-muted" /></span>
+  return <img src={src} onError={() => setFailed(true)} className="h-11 w-11 shrink-0 rounded-lg bg-bark-800 object-contain" alt="" loading="lazy" draggable={false} />
+}
+
 // Liste des fichiers d'un dossier de l'instance (mods, packs, shaders)
 function FileList({ inst, folder, onAdd, toast }) {
   const [files, setFiles] = useState(null)
@@ -45,11 +54,14 @@ function FileList({ inst, folder, onAdd, toast }) {
 
   // Mises à jour des mods : vérifiées à l'ouverture de l'onglet, appliquées en tâche de fond
   const [updates, setUpdates] = useState(null) // null = vérification en cours
+  const [remoteIcons, setRemoteIcons] = useState({}) // logos Modrinth/CurseForge des mods sans logo intégré
   const [updating, setUpdating] = useState({}) // id de tâche -> fichiers concernés
   const check = useCallback(() => {
     if (!isMods || inst.loader === 'vanilla') return setUpdates({})
     setUpdates(null)
-    api.content.checkModUpdates(inst.id).then(setUpdates).catch(() => setUpdates({}))
+    api.content.checkModUpdates(inst.id)
+      .then((res) => { setUpdates(res.updates); setRemoteIcons((icons) => ({ ...icons, ...res.icons })) })
+      .catch(() => setUpdates({}))
   }, [inst.id, inst.loader, isMods])
   useEffect(() => { check() }, [check])
   useEffect(() => {
@@ -101,6 +113,7 @@ function FileList({ inst, folder, onAdd, toast }) {
       <div className="space-y-2">
         {shown.map((f) => (
           <div key={f.name} className={`flex items-center gap-4 rounded-tl border border-bark-700 bg-bark-850/85 px-4 py-3 ${f.enabled ? '' : 'opacity-55'}`}>
+            {isMods && <ModIcon inst={inst} file={f} remote={remoteIcons[f.name]} />}
             <div className="min-w-0 flex-1">
               <div className="truncate font-semibold">{f.title || f.name.replace(/\.disabled$/, '')}</div>
               <div className="truncate text-xs text-cream-muted">

@@ -115,7 +115,7 @@ function createMock() {
       },
       versions: async (_p, pid) => (await (await fetch(`https://api.modrinth.com/v2/project/${pid}/version`)).json()).map((v) => ({ id: v.id, name: v.name, date: v.date_published, channel: v.version_type, downloads: v.downloads, gameVersions: v.game_versions, loaders: v.loaders })),
       install: async (project) => { fakeDownload(project.title); return null },
-      checkModUpdates: async () => ({}),
+      checkModUpdates: async () => ({ updates: {}, icons: {} }),
       updateMods: desktopOnly,
       installModpack: async ({ project, name }) => {
         const inst = { id: id(), name: name || project.title, version: project.gameVersion, loader: project.loaders[0] || 'vanilla', banner: 5, profileId: null, imported: [], createdAt: Date.now(), lastPlayed: null }

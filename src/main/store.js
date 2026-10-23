@@ -466,6 +466,24 @@ const FOLDERS = { mods: 'mods', resourcepacks: 'resourcepacks', shaderpacks: 'sh
 const modMetaCache = new Map()
 
 // Nom et version lus dans le .jar (Fabric, Quilt, Forge/NeoForge)
+// « icon » de fabric.mod.json : un chemin, ou { "16": …, "128": … } dont on prend le plus grand
+function pickIcon(icon) {
+  if (!icon) return null
+  if (typeof icon === 'string') return icon
+  const sizes = Object.keys(icon).sort((a, b) => Number(b) - Number(a))
+  return icon[sizes[0]] || null
+}
+
+// Logo intégré au fichier du mod : { data, type } ou null
+function modIcon(id, name) {
+  const file = folderPath(id, 'mods', name)
+  const icon = readModMeta(file).icon
+  if (!icon) return null
+  const AdmZip = require('adm-zip')
+  const data = new AdmZip(file).getEntry(icon.replace(/^\//, ''))?.getData()
+  return data ? { data, type: /\.jpe?g$/i.test(icon) ? 'image/jpeg' : 'image/png' } : null
+}
+
 function readModMeta(file) {
   const st = fs.statSync(file)
   const key = `${file}:${st.mtimeMs}`
@@ -478,16 +496,17 @@ function readModMeta(file) {
     if (fabric) {
       const j = JSON.parse(zip.readAsText(fabric).replace(/^﻿/, ''))
       const q = j.quilt_loader?.metadata
-      meta = { name: j.name || q?.name || j.id || j.quilt_loader?.id, version: j.version || j.quilt_loader?.version, description: j.description || q?.description }
+      meta = { name: j.name || q?.name || j.id || j.quilt_loader?.id, version: j.version || j.quilt_loader?.version, description: j.description || q?.description, icon: pickIcon(j.icon || q?.icon) }
     } else {
       const toml = zip.getEntry('META-INF/neoforge.mods.toml') || zip.getEntry('META-INF/mods.toml')
       if (toml) {
         const t = zip.readAsText(toml)
         const pick = (k) => t.match(new RegExp(`^\\s*${k}\\s*=\\s*["']([^"']+)["']`, 'm'))?.[1]
-        meta = { name: pick('displayName') || pick('modId'), version: pick('version'), description: pick('description') }
+        meta = { name: pick('displayName') || pick('modId'), version: pick('version'), description: pick('description'), icon: pick('logoFile') }
         if (meta.version?.includes('${')) meta.version = null
       }
     }
+    if (meta.icon && !zip.getEntry(meta.icon.replace(/^\//, ''))) meta.icon = null
   } catch {}
   modMetaCache.set(key, meta)
   return meta
@@ -506,7 +525,7 @@ function listInstanceFolder(id, folder) {
       const entry = { name: n, size: st.isDirectory() ? 0 : st.size, mtime: st.mtimeMs, enabled: !n.endsWith('.disabled') }
       if (folder === 'mods') {
         const meta = readModMeta(full)
-        Object.assign(entry, { title: meta.name || null, version: meta.version || null, description: meta.description || null })
+        Object.assign(entry, { title: meta.name || null, version: meta.version || null, description: meta.description || null, hasIcon: !!meta.icon })
       }
       return entry
     })
@@ -573,6 +592,6 @@ module.exports = {
   init, itemList, mergeOptions,
   listProfiles, createProfile, updateProfile, deleteProfile, profileFilesDir, scanSource, importSelection, detectSources,
   listInstances, createInstance, updateInstance, deleteInstance, reapplyProfile, saveOptionsToProfile,
-  setInstanceImage, instanceDir, gameDir,
+  setInstanceImage, instanceDir, gameDir, modIcon,
   listInstanceFolder, folderPath, toggleMod, duplicateInstance, exportInstance
 }

@@ -63,6 +63,14 @@ app.whenReady().then(() => {
   protocol.handle('terra', (req) => {
     const url = new URL(req.url)
     const [id, file] = url.pathname.split('/').filter(Boolean).map(decodeURIComponent)
+    // terra://modicon/<id>/<fichier du mod> : logo lu dans le .jar
+    if (url.hostname === 'modicon') {
+      try {
+        const icon = store.modIcon(id, path.basename(file))
+        if (icon) return new Response(icon.data, { headers: { 'Content-Type': icon.type, 'Cache-Control': 'max-age=3600' } })
+      } catch {}
+      return new Response(null, { status: 404 })
+    }
     // terra://banner/<id>/<banner.x|logo.x> ou terra://shot/<id>/<capture>
     if (url.hostname !== 'shot' && !/^(banner|logo)\./.test(path.basename(file))) return new Response(null, { status: 404 })
     const target = url.hostname === 'shot' ? store.folderPath(id, 'screenshots', path.basename(file)) : path.join(store.instanceDir(id), path.basename(file))

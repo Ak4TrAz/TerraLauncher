@@ -456,22 +456,28 @@ const modUpdates = new Map() // instanceId -> { fichier actuel -> mise à jour t
 
 async function checkModUpdates(instanceId) {
   const inst = store.listInstances().find((i) => i.id === instanceId)
-  if (!inst || inst.loader === 'vanilla') return {}
+  if (!inst || inst.loader === 'vanilla') return { updates: {}, icons: {} }
   const dir = path.join(store.gameDir(instanceId), 'mods')
   let names = []
-  try { names = fs.readdirSync(dir).filter((n) => /\.jar(\.disabled)?$/i.test(n)) } catch { return {} }
+  try { names = fs.readdirSync(dir).filter((n) => /\.jar(\.disabled)?$/i.test(n)) } catch { return { updates: {}, icons: {} } }
   const loaders = inst.loader === 'quilt' ? ['quilt', 'fabric'] : [inst.loader]
   const mods = names.map((name) => {
     const buf = fs.readFileSync(path.join(dir, name))
     return { name, sha1: crypto.createHash('sha1').update(buf).digest('hex'), buf }
   })
   const found = {}
+  const icons = {} // fichier -> logo du projet (pour les mods sans logo intégré)
 
   // Modrinth : une seule requête pour tous les fichiers
   const known = new Set()
   try {
     const latest = await mrPost('/version_files/update', { hashes: mods.map((x) => x.sha1), algorithm: 'sha1', loaders, game_versions: [inst.version] })
     const current = await mrPost('/version_files', { hashes: mods.map((x) => x.sha1), algorithm: 'sha1' })
+    const ids = [...new Set(Object.values(current).map((v) => v.project_id))]
+    if (ids.length) {
+      const projects = new Map((await mr(`/projects?ids=${encodeURIComponent(JSON.stringify(ids))}`)).map((p) => [p.id, p.icon_url]))
+      for (const mod of mods) if (current[mod.sha1] && projects.get(current[mod.sha1].project_id)) icons[mod.name] = projects.get(current[mod.sha1].project_id)
+    }
     for (const mod of mods) {
       if (current[mod.sha1]) known.add(mod.name)
       const v = latest[mod.sha1]
@@ -491,7 +497,15 @@ async function checkModUpdates(instanceId) {
       const res = await cf('/fingerprints/432', { fingerprints: [...prints.keys()] })
       const params = new URLSearchParams({ gameVersion: inst.version, pageSize: '1' })
       if (CF_LOADER[inst.loader]) params.set('modLoaderType', String(CF_LOADER[inst.loader]))
-      await Promise.all((res.data?.exactMatches || []).map(async (match) => {
+      const matches = res.data?.exactMatches || []
+      if (matches.length) {
+        const logos = new Map((await cf('/mods', { modIds: matches.map((x) => x.id) })).data.map((m) => [m.id, m.logo?.thumbnailUrl]))
+        for (const match of matches) {
+          const mod = prints.get(match.file.fileFingerprint)
+          if (mod && logos.get(match.id)) icons[mod.name] = logos.get(match.id)
+        }
+      }
+      await Promise.all(matches.map(async (match) => {
         const mod = prints.get(match.file.fileFingerprint)
         if (!mod) return
         const newest = (await cf(`/mods/${match.id}/files?${params}`)).data?.[0]
@@ -505,7 +519,10 @@ async function checkModUpdates(instanceId) {
   }
 
   modUpdates.set(instanceId, found)
-  return Object.fromEntries(Object.entries(found).map(([name, u]) => [name, { version: u.version, file: u.file, blocked: !u.url }]))
+  return {
+    updates: Object.fromEntries(Object.entries(found).map(([name, u]) => [name, { version: u.version, file: u.file, blocked: !u.url }])),
+    icons
+  }
 }
 
 // Remplace les fichiers par leur nouvelle version (une fois téléchargée, l'ancienne part à la corbeille)
