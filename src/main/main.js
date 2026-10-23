@@ -46,6 +46,9 @@ function handle(channel, fn) {
   })
 }
 
+// Même identifiant que les raccourcis créés par l'installeur : icône et regroupement corrects dans la barre des tâches
+app.setAppUserModelId('fr.terranova.terralauncher')
+
 app.whenReady().then(() => {
   store.init(dataRoot)
   settings.init(dataRoot)
@@ -185,7 +188,8 @@ app.whenReady().then(() => {
 
 // Mises à jour automatiques depuis les versions publiées sur GitHub (version installée uniquement)
 function setupUpdates() {
-  if (!app.isPackaged) return
+  // Pas de mise à jour pour la copie de test du dossier de build : elle s'installerait au mauvais endroit
+  if (!app.isPackaged || /[\\/]win-unpacked[\\/]/i.test(process.execPath)) return
   autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
   const send = (state, info) => win && !win.isDestroyed() && win.webContents.send('app:update', { state, version: info?.version })
