@@ -283,12 +283,17 @@ async function launch(instanceId, session, options, { join } = {}) {
     }
 
     const maxMemory = Math.max(1024, Number(inst.memory || options.memory || 4096))
-    const extraJVMArgs = [...core.DEFAULT_EXTRA_JVM_ARGS, ...(options.jvmArgs || '').split(/\s+/).filter(Boolean)]
+    // Les arguments par défaut de @xmcl contiennent -Xmx2G, qui écraserait la RAM choisie
+    const extraJVMArgs = [...core.DEFAULT_EXTRA_JVM_ARGS.filter((a) => !/^-Xm[sx]/.test(a)), ...(options.jvmArgs || '').split(/\s+/).filter(Boolean)]
+
+    // Chemins réels : si le dossier est redirigé (ex. application empaquetée), Fabric ne reconnaît
+    // plus ses propres jars et plante (« trying to load FabricLoaderImpl from target class loader »)
+    const real = (p) => { try { return fs.realpathSync.native(p) } catch { return p } }
 
     const proc = await core.launch({
-      gamePath: game,
-      resourcePath: root,
-      javaPath: java.javaw,
+      gamePath: real(game),
+      resourcePath: real(root),
+      javaPath: real(java.javaw),
       version: versionId,
       gameProfile: { name: session.name, id: session.uuid },
       accessToken: session.accessToken,
