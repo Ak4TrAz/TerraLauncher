@@ -320,7 +320,7 @@ async function saveBanner(instanceId, imageUrl) {
     const ext = (path.extname(new URL(imageUrl).pathname) || '.png').slice(0, 5)
     const tmp = path.join(os.tmpdir(), `terra-banner-${instanceId}${ext}`)
     fs.writeFileSync(tmp, Buffer.from(await res.arrayBuffer()))
-    store.setInstanceBanner(instanceId, tmp)
+    store.setInstanceImage(instanceId, 'banner', tmp)
     fs.rmSync(tmp, { force: true })
   } catch {}
 }

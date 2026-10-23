@@ -19,3 +19,10 @@ export default function Banner({ instance, scene, className = '' }) {
     : BANNERS[(instance ? instance.banner ?? 0 : scene ?? 0) % BANNERS.length].file
   return <img src={src} className={`h-full w-full object-cover ${className}`} alt="" draggable={false} />
 }
+
+// Vignette carrée : le logo importé, sinon la bannière
+export function Logo({ instance, className = '' }) {
+  if (!instance?.logoFile) return <Banner instance={instance} className={className} />
+  const src = `terra://banner/${instance.id}/${instance.logoFile}?v=${instance.logoRev || 0}`
+  return <img src={src} className={`h-full w-full object-cover ${className}`} alt="" draggable={false} />
+}

@@ -207,7 +207,8 @@ export default function App() {
     stop: (inst) => api.game.stop(inst.id),
     repair: run((inst) => api.game.repair(inst.id), (_r, inst) => `« ${inst.name} » a été vérifiée et réparée.`),
     openFolder: run((inst) => api.instances.openFolder(inst.id)),
-    changeBanner: run((inst) => api.instances.pickBanner(inst.id)),
+    changeImage: run((inst, kind) => api.instances.pickImage(inst.id, kind)),
+    resetImages: run(async (inst) => { await api.instances.resetImage(inst.id, 'logo'); await api.instances.resetImage(inst.id, 'banner') }, 'Images par défaut rétablies.'),
     reapply: (inst) => (profiles.length ? setReapplying(inst) : toast("Crée d'abord un profil dans l'onglet Profils.")),
     saveToProfile: run((inst) => api.instances.saveToProfile(inst.id), 'Touches et réglages enregistrés dans le profil.'),
     remove: (inst) =>

@@ -441,12 +441,15 @@ function deleteInstance(id) {
   folderOf.delete(id)
 }
 
-function setInstanceBanner(id, imagePath) {
+// Images personnalisées : kind = 'banner' (grande image) ou 'logo' (vignette carrée).
+// Sans imagePath, l'image par défaut revient.
+function setInstanceImage(id, kind, imagePath = null) {
   const p = instancePaths(id)
-  const dest = path.join(p.dir, 'banner' + path.extname(imagePath).toLowerCase())
-  for (const f of fs.readdirSync(p.dir)) if (f.startsWith('banner.')) fs.rmSync(path.join(p.dir, f))
+  for (const f of fs.readdirSync(p.dir)) if (f.startsWith(kind + '.')) fs.rmSync(path.join(p.dir, f))
+  if (!imagePath) return updateInstance(id, { [kind + 'File']: null, [kind + 'Rev']: Date.now() })
+  const dest = path.join(p.dir, kind + path.extname(imagePath).toLowerCase())
   fs.copyFileSync(imagePath, dest)
-  return updateInstance(id, { bannerFile: path.basename(dest), bannerRev: Date.now() })
+  return updateInstance(id, { [kind + 'File']: path.basename(dest), [kind + 'Rev']: Date.now() })
 }
 
 function instanceDir(id) {
@@ -541,7 +544,7 @@ function duplicateInstance(id, name) {
     }
     else copyRecursive(from, to)
   }
-  for (const f of fs.readdirSync(src.dir)) if (f.startsWith('banner.')) fs.copyFileSync(path.join(src.dir, f), path.join(dest.dir, f))
+  for (const f of fs.readdirSync(src.dir)) if (/^(banner|logo)\./.test(f)) fs.copyFileSync(path.join(src.dir, f), path.join(dest.dir, f))
   writeJson(dest.meta, copy)
   return copy
 }
@@ -570,6 +573,6 @@ module.exports = {
   init, itemList, mergeOptions,
   listProfiles, createProfile, updateProfile, deleteProfile, profileFilesDir, scanSource, importSelection, detectSources,
   listInstances, createInstance, updateInstance, deleteInstance, reapplyProfile, saveOptionsToProfile,
-  setInstanceBanner, instanceDir, gameDir,
+  setInstanceImage, instanceDir, gameDir,
   listInstanceFolder, folderPath, toggleMod, duplicateInstance, exportInstance
 }

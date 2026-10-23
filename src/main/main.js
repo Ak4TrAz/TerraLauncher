@@ -59,7 +59,8 @@ app.whenReady().then(() => {
   protocol.handle('terra', (req) => {
     const url = new URL(req.url)
     const [id, file] = url.pathname.split('/').filter(Boolean).map(decodeURIComponent)
-    // terra://banner/<id>/<fichier> ou terra://shot/<id>/<capture>
+    // terra://banner/<id>/<banner.x|logo.x> ou terra://shot/<id>/<capture>
+    if (url.hostname !== 'shot' && !/^(banner|logo)\./.test(path.basename(file))) return new Response(null, { status: 404 })
     const target = url.hostname === 'shot' ? store.folderPath(id, 'screenshots', path.basename(file)) : path.join(store.instanceDir(id), path.basename(file))
     return net.fetch(pathToFileURL(target).toString())
   })
@@ -153,15 +154,17 @@ app.whenReady().then(() => {
   handle('instances:openFolder', (id) => openFolder(store.gameDir(id)))
   handle('instances:reapplyProfile', (id, profileId, items) => store.reapplyProfile(id, profileId, items))
   handle('instances:saveToProfile', (id) => store.saveOptionsToProfile(id))
-  handle('instances:pickBanner', async (id) => {
+  // kind : 'banner' ou 'logo'
+  handle('instances:pickImage', async (id, kind) => {
     const res = await dialog.showOpenDialog(win, {
-      title: 'Choisir une image de bannière',
+      title: kind === 'logo' ? 'Choisir un logo' : 'Choisir une image de bannière',
       filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }],
       properties: ['openFile']
     })
     if (res.canceled) return null
-    return store.setInstanceBanner(id, res.filePaths[0])
+    return store.setInstanceImage(id, kind, res.filePaths[0])
   })
+  handle('instances:resetImage', (id, kind) => store.setInstanceImage(id, kind))
 
   handle('app:version', () => app.getVersion())
   handle('app:installUpdate', () => autoUpdater.quitAndInstall())

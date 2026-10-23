@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Search, LayoutGrid, List, ArrowUpDown, Play, MoreVertical, Plus, Clock, FolderOpen, Image, RefreshCw, Save, Trash2, Sparkles, Loader2, AlertTriangle, Wrench, Server, Info } from 'lucide-react'
-import Banner from '../components/Banner'
+import { Search, LayoutGrid, List, ArrowUpDown, Play, MoreVertical, Plus, Clock, FolderOpen, Image, RefreshCw, Save, Trash2, Sparkles, Loader2, AlertTriangle, Wrench, Server, Info, ImagePlus, RotateCcw } from 'lucide-react'
+import Banner, { Logo } from '../components/Banner'
 import PlayButton from '../components/PlayButton'
 import { Menu, Select, VersionChip, LoaderChip, ProfileChip, CubesIcon, formatPlayTime } from '../components/ui'
 
@@ -46,7 +46,9 @@ export function instanceMenu(inst, a) {
     { icon: Server, label: 'Rejoindre Terranova', onClick: () => a.join(inst) },
     '-',
     { icon: FolderOpen, label: 'Ouvrir le dossier', onClick: () => a.openFolder(inst) },
-    { icon: Image, label: 'Changer la bannière', onClick: () => a.changeBanner(inst) },
+    { icon: ImagePlus, label: 'Changer le logo', onClick: () => a.changeImage(inst, 'logo') },
+    { icon: Image, label: 'Changer la bannière', onClick: () => a.changeImage(inst, 'banner') },
+    (inst.logoFile || inst.bannerFile) && { icon: RotateCcw, label: 'Images par défaut', onClick: () => a.resetImages(inst) },
     { icon: Wrench, label: 'Réparer l’instance', onClick: () => a.repair(inst) },
     '-',
     { icon: RefreshCw, label: 'Appliquer un profil…', onClick: () => a.reapply(inst) },
@@ -72,7 +74,7 @@ function Hero({ inst, profile, actions }) {
       )}
       <div className="absolute inset-x-5 bottom-5 flex items-end gap-5">
         <div className="h-[110px] w-[110px] shrink-0 cursor-pointer overflow-hidden rounded-xl border-[3px] border-white/85 shadow-xl" onClick={() => actions.open(inst)}>
-          <Banner instance={inst} />
+          <Logo instance={inst} />
         </div>
         <div className="min-w-0 flex-1 pb-1">
           <h2 className="mb-3 cursor-pointer truncate text-3xl font-extrabold drop-shadow hover:underline" onClick={() => actions.open(inst)}>{inst.name}</h2>

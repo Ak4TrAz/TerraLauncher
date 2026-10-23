@@ -160,7 +160,8 @@ function createMock() {
         return list.find((i) => i.id === iid)
       },
       saveToProfile: desktopOnly,
-      pickBanner: desktopOnly,
+      pickImage: desktopOnly,
+      resetImage: desktopOnly,
       files: async (_id, folder) => (folder === 'mods' ? [{ name: 'sodium-fabric-0.5.13.jar', title: 'Sodium', version: '0.5.13', size: 980000, enabled: true }, { name: 'iris-1.7.6.jar.disabled', title: 'Iris', version: '1.7.6', size: 2400000, enabled: false }] : []),
       toggleMod: async () => {},
       trashFile: async () => {},

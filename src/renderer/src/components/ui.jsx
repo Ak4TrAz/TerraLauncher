@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { X, Check, ChevronDown } from 'lucide-react'
 import { LOADERS } from '../api'
@@ -142,45 +143,74 @@ export function Checkbox({ checked, onChange, label, detail, disabled }) {
   )
 }
 
+// Menu contextuel : s'ouvre sous le bouton, ou au-dessus s'il n'y a pas la place.
+// Affiché par-dessus la page pour ne pas être coupé par une carte ou une bannière.
 export function Menu({ items, children }) {
-  const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState(null)
   const ref = useRef(null)
+  const menuRef = useRef(null)
+  const list = items.filter(Boolean)
+  const open = !!pos
+
   useEffect(() => {
     if (!open) return
-    const close = (e) => !ref.current?.contains(e.target) && setOpen(false)
+    const close = (e) => !ref.current?.contains(e.target) && !menuRef.current?.contains(e.target) && setPos(null)
+    const hide = () => setPos(null)
     window.addEventListener('mousedown', close)
-    return () => window.removeEventListener('mousedown', close)
+    window.addEventListener('resize', hide)
+    window.addEventListener('scroll', hide, true)
+    return () => {
+      window.removeEventListener('mousedown', close)
+      window.removeEventListener('resize', hide)
+      window.removeEventListener('scroll', hide, true)
+    }
   }, [open])
+
+  const toggle = (e) => {
+    e.stopPropagation()
+    if (open) return setPos(null)
+    const height = list.filter((it) => it !== '-').length * 36 + list.filter((it) => it === '-').length * 9 + 14
+    const r = ref.current.getBoundingClientRect()
+    const below = window.innerHeight - r.bottom
+    const up = below < height + 16 && r.top > below
+    setPos({ up, right: window.innerWidth - r.right, top: r.bottom + 8, bottom: window.innerHeight - r.top + 8 })
+  }
+  const dy = pos?.up ? 6 : -6
 
   return (
     <div className="relative" ref={ref}>
-      <div onClick={(e) => { e.stopPropagation(); setOpen((o) => !o) }}>{children}</div>
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            className="no-drag absolute bottom-full right-0 z-40 mb-2 min-w-[250px] overflow-hidden rounded-xl border border-bark-700 bg-bark-850 p-1.5 shadow-2xl"
-            initial={{ opacity: 0, y: 6, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 6, scale: 0.97 }}
-            transition={{ duration: 0.12 }}
-          >
-            {items.filter(Boolean).map((it, i) =>
-              it === '-' ? (
-                <div key={i} className="my-1 h-px bg-bark-700" />
-              ) : (
-                <button
-                  key={i}
-                  onClick={(e) => { e.stopPropagation(); setOpen(false); it.onClick() }}
-                  className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm ${it.danger ? 'text-red-400 hover:bg-red-500/10' : 'text-orange-50/85 hover:bg-bark-700/70'}`}
-                >
-                  {it.icon && <it.icon className="h-4 w-4 opacity-80" />}
-                  {it.label}
-                </button>
-              )
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <div onClick={toggle}>{children}</div>
+      {createPortal(
+        <AnimatePresence>
+          {open && (
+            <motion.div
+              ref={menuRef}
+              className="no-drag fixed z-[60] min-w-[250px] overflow-hidden rounded-xl border border-bark-700 bg-bark-850 p-1.5 shadow-2xl"
+              style={pos.up ? { right: pos.right, bottom: pos.bottom } : { right: pos.right, top: pos.top }}
+              initial={{ opacity: 0, y: dy, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: dy, scale: 0.97 }}
+              transition={{ duration: 0.12 }}
+            >
+              {list.map((it, i) =>
+                it === '-' ? (
+                  <div key={i} className="my-1 h-px bg-bark-700" />
+                ) : (
+                  <button
+                    key={i}
+                    onClick={(e) => { e.stopPropagation(); setPos(null); it.onClick() }}
+                    className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm ${it.danger ? 'text-red-400 hover:bg-red-500/10' : 'text-orange-50/85 hover:bg-bark-700/70'}`}
+                  >
+                    {it.icon && <it.icon className="h-4 w-4 opacity-80" />}
+                    {it.label}
+                  </button>
+                )
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   )
 }

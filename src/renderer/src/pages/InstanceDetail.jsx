@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { ArrowLeft, FileText, Puzzle, Image as ImageIcon, Sparkles, Camera, Settings2, MoreVertical, ChevronRight, FolderOpen, Copy, Upload, MemoryStick, Server, Trash2, Plus, Search, Wrench, Loader2, X } from 'lucide-react'
-import Banner from '../components/Banner'
+import { ArrowLeft, FileText, Puzzle, Image as ImageIcon, Sparkles, Camera, Settings2, MoreVertical, ChevronRight, FolderOpen, Copy, Upload, MemoryStick, Server, Trash2, Plus, Search, Wrench, Loader2, X, ImagePlus } from 'lucide-react'
+import Banner, { Logo } from '../components/Banner'
 import PlayButton from '../components/PlayButton'
 import { Menu, VersionChip, LoaderChip, ProfileChip, GrassBlock, formatPlayTime } from '../components/ui'
 import { api, LOADERS } from '../api'
@@ -172,7 +172,8 @@ function InstanceSettings({ inst, actions, totalMemory }) {
         <button className="btn-primary" onClick={save}>Enregistrer</button>
       </div>
       <div className="panel flex flex-wrap gap-3 p-6">
-        <button className="btn-ghost" onClick={() => actions.changeBanner(inst)}><ImageIcon className="h-4 w-4" /> Changer la bannière</button>
+        <button className="btn-ghost" onClick={() => actions.changeImage(inst, 'logo')}><ImagePlus className="h-4 w-4" /> Changer le logo</button>
+        <button className="btn-ghost" onClick={() => actions.changeImage(inst, 'banner')}><ImageIcon className="h-4 w-4" /> Changer la bannière</button>
         <button className="btn-ghost" onClick={() => actions.repair(inst)}><Wrench className="h-4 w-4" /> Réparer l’instance</button>
         <button className="btn-ghost ml-auto text-red-400 hover:text-red-300" onClick={() => actions.remove(inst)}><Trash2 className="h-4 w-4" /> Supprimer l’instance</button>
       </div>
@@ -200,7 +201,7 @@ export default function InstanceDetail({ inst, profile, actions, menuItems, onBa
         <Banner instance={inst} />
         <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent" />
         <div className="absolute inset-x-5 bottom-5 flex items-end gap-5">
-          <div className="h-[115px] w-[115px] shrink-0 overflow-hidden rounded-xl border-[3px] border-white/85 shadow-xl"><Banner instance={inst} /></div>
+          <div className="h-[115px] w-[115px] shrink-0 overflow-hidden rounded-xl border-[3px] border-white/85 shadow-xl"><Logo instance={inst} /></div>
           <div className="min-w-0 flex-1 pb-1">
             <h1 className="mb-3 truncate text-4xl font-extrabold drop-shadow">{inst.name}</h1>
             <div className="flex flex-wrap gap-2">
