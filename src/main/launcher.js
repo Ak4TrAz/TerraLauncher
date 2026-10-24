@@ -8,6 +8,7 @@ const core = require('@xmcl/core')
 const installer = require('@xmcl/installer')
 const store = require('./store')
 const downloads = require('./downloads')
+const { insideDir, isVersion, checkVersion, checkComponent } = require('./paths')
 
 const UA = { 'User-Agent': 'TerraLauncher/0.1.0' }
 const VERSION_MANIFEST = 'https://piston-meta.mojang.com/mc/game/version_manifest_v2.json'
@@ -58,7 +59,7 @@ const hiddenSpawn = (cmd, args, opts) => spawn(cmd, args, { ...opts, windowsHide
 // ---------- Java ----------
 
 function javaPaths(component) {
-  const dir = path.join(root, 'runtime', component)
+  const dir = insideDir(path.join(root, 'runtime'), checkComponent(component))
   return { dir, javaw: path.join(dir, 'bin', 'javaw.exe'), java: path.join(dir, 'bin', 'java.exe'), marker: path.join(dir, '.terralauncher-ok') }
 }
 
@@ -74,7 +75,7 @@ async function ensureJava(task, component) {
   const manifest = await getJson(target.manifest.url)
   const files = []
   for (const [name, entry] of Object.entries(manifest.files)) {
-    const dest = path.join(p.dir, ...name.split('/'))
+    const dest = insideDir(p.dir, name)
     if (entry.type === 'directory') fs.mkdirSync(dest, { recursive: true })
     else if (entry.type === 'file') files.push({ url: entry.downloads.raw.url, dest, sha1: entry.downloads.raw.sha1, size: entry.downloads.raw.size })
   }
@@ -87,7 +88,7 @@ async function ensureJava(task, component) {
 // ---------- Version de base ----------
 
 async function ensureVanilla(task, version) {
-  const dir = path.join(root, 'versions', version)
+  const dir = insideDir(path.join(root, 'versions'), checkVersion(version, 'Version de Minecraft'))
   const jsonPath = path.join(dir, `${version}.json`)
   let json
   if (fs.existsSync(jsonPath)) json = JSON.parse(fs.readFileSync(jsonPath, 'utf8'))
@@ -134,31 +135,32 @@ async function latestNeoForge(mc) {
 
 // Installe le loader et renvoie l'identifiant de version à lancer
 async function ensureLoader(task, inst, javaExe) {
-  const mc = inst.version
+  const mc = checkVersion(inst.version, 'Version de Minecraft')
   let loaderVersion = inst.loaderVersion
+  const checked = (v) => checkVersion(v, 'Version du chargeur')
   const forgeOptions = { java: javaExe, spawn: hiddenSpawn }
 
   switch (inst.loader) {
     case 'fabric': {
-      loaderVersion ||= await latestFabricLike('https://meta.fabricmc.net/v2', mc)
+      loaderVersion = checked(loaderVersion || await latestFabricLike('https://meta.fabricmc.net/v2', mc))
       task.detail = `Fabric ${loaderVersion}`
       downloads.notify(true)
       return { id: await installer.installFabric({ minecraftVersion: mc, version: loaderVersion, minecraft: root }), loaderVersion }
     }
     case 'quilt': {
-      loaderVersion ||= await latestFabricLike('https://meta.quiltmc.org/v3', mc)
+      loaderVersion = checked(loaderVersion || await latestFabricLike('https://meta.quiltmc.org/v3', mc))
       task.detail = `Quilt ${loaderVersion}`
       downloads.notify(true)
       return { id: await installer.installQuiltVersion({ minecraftVersion: mc, version: loaderVersion, minecraft: root }), loaderVersion }
     }
     case 'forge': {
-      loaderVersion ||= await latestForge(mc)
+      loaderVersion = checked(loaderVersion || await latestForge(mc))
       task.detail = `Forge ${loaderVersion} (peut prendre une minute)`
       downloads.notify(true)
       return { id: await runXmclSafe(task, installer.installForgeTask({ mcversion: mc, version: loaderVersion }, root, forgeOptions)), loaderVersion }
     }
     case 'neoforge': {
-      loaderVersion ||= await latestNeoForge(mc)
+      loaderVersion = checked(loaderVersion || await latestNeoForge(mc))
       task.detail = `NeoForge ${loaderVersion} (peut prendre une minute)`
       downloads.notify(true)
       return { id: await runXmclSafe(task, installer.installNeoForgedTask('neoforge', loaderVersion, root, forgeOptions)), loaderVersion }
@@ -173,28 +175,30 @@ async function ensureLoader(task, inst, javaExe) {
 const RESOURCES = 'https://resources.download.minecraft.net'
 
 // Télécharge librairies, index et objets de ressources, et config de logs de la version résolue
+// Chaque chemin venu du fichier de version reste dans son dossier
 async function ensureDependencies(task, resolved) {
   const libs = resolved.libraries
     .filter((l) => l.download?.url)
-    .map((l) => ({ url: l.download.url, dest: path.join(root, 'libraries', ...l.download.path.split('/')), sha1: l.download.sha1 || undefined, size: l.download.size > 0 ? l.download.size : 0 }))
+    .map((l) => ({ url: l.download.url, dest: insideDir(path.join(root, 'libraries'), l.download.path), sha1: l.download.sha1 || undefined, size: l.download.size > 0 ? l.download.size : 0 }))
   task.detail = `Librairies (${libs.length})`
   downloads.notify(true)
   let failed = await downloads.downloadFiles(task, libs, 8)
   if (failed.length) throw new Error(`Librairies : ${failed.length} fichier(s) en échec (${failed[0].error})`)
 
   const idx = resolved.assetIndex
-  const indexPath = path.join(root, 'assets', 'indexes', `${idx.id}.json`)
+  const indexPath = insideDir(path.join(root, 'assets', 'indexes'), `${idx.id}.json`)
   failed = await downloads.downloadFiles(task, [{ url: idx.url, dest: indexPath, sha1: idx.sha1, size: idx.size }])
   if (failed.length) throw new Error(`Index des ressources : ${failed[0].error}`)
 
   const logging = resolved.logging?.client?.file
-  if (logging?.url) await downloads.downloadFiles(task, [{ url: logging.url, dest: path.join(root, 'assets', 'log_configs', logging.id), sha1: logging.sha1, size: logging.size }])
+  if (logging?.url) await downloads.downloadFiles(task, [{ url: logging.url, dest: insideDir(path.join(root, 'assets', 'log_configs'), logging.id), sha1: logging.sha1, size: logging.size }])
 
   const objects = JSON.parse(fs.readFileSync(indexPath, 'utf8')).objects || {}
   const seen = new Set()
   const assets = []
   for (const { hash, size } of Object.values(objects)) {
     if (seen.has(hash)) continue
+    if (!/^[0-9a-f]{40}$/.test(hash)) throw new Error('Index des ressources invalide.')
     seen.add(hash)
     assets.push({ url: `${RESOURCES}/${hash.slice(0, 2)}/${hash}`, dest: path.join(root, 'assets', 'objects', hash.slice(0, 2), hash), sha1: hash, size })
   }
@@ -232,14 +236,14 @@ async function doPrepare(instanceId, { force = false } = {}) {
   const task = downloads.begin(`Préparation de « ${inst.name} »`, 'Vérification…')
   try {
     const vanilla = await ensureVanilla(task, inst.version)
-    const component = vanilla.javaVersion?.component || 'jre-legacy'
+    const component = checkComponent(vanilla.javaVersion?.component || 'jre-legacy')
     const java = await ensureJava(task, component)
 
     let versionId = inst.preparedVersion
-    const jsonOk = versionId && fs.existsSync(path.join(root, 'versions', versionId, `${versionId}.json`))
+    const jsonOk = isVersion(versionId) && fs.existsSync(path.join(root, 'versions', versionId, `${versionId}.json`))
     if (force || !jsonOk) {
       const loader = await ensureLoader(task, inst, java.java)
-      versionId = loader.id
+      versionId = checkVersion(loader.id, 'Version à lancer')
       store.updateInstance(inst.id, { loaderVersion: loader.loaderVersion })
     }
 

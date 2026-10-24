@@ -41,7 +41,40 @@ const get = () => ({
   hasCurseforgeKey: !!curseforgeKey()
 })
 
-function update(changes) {
+// Options Java qui font charger du code à la JVM (agent, bibliothèque native, commande, fichier d'arguments)
+const FORBIDDEN_JVM = /^(-javaagent|-agentpath|-agentlib|-Xrun|-XX:OnError|-XX:OnOutOfMemoryError|@)/i
+
+function checkJvmArgs(value) {
+  for (const arg of value.split(/\s+/).filter(Boolean)) {
+    if (FORBIDDEN_JVM.test(arg.replace(/^["']+/, ''))) throw new Error(`Argument Java refusé : ${arg.slice(0, 60)}`)
+  }
+}
+
+const isString = (max) => (v) => typeof v === 'string' && v.length <= max
+const isBool = (v) => typeof v === 'boolean'
+
+// Seuls réglages modifiables depuis l'interface, avec leur contrôle
+const EDITABLE = {
+  animations: isBool,
+  startPage: (v) => ['library', 'discover', 'profiles'].includes(v),
+  msClientId: isString(100),
+  memory: (v) => Number.isInteger(v) && v >= 512 && v <= 1048576,
+  jvmArgs: (v) => isString(2000)(v) && (checkJvmArgs(v), true),
+  gpu: isBool,
+  minimizeOnLaunch: isBool,
+  serverAddress: (v) => isString(255)(v) && /^([^\s-]\S*)?$/.test(v),
+  curseforgeKey: isString(200)
+}
+
+function update(input) {
+  if (!input || typeof input !== 'object') throw new Error('Réglages refusés')
+  const changes = {}
+  for (const [key, value] of Object.entries(input)) {
+    if (!Object.hasOwn(EDITABLE, key)) throw new Error(`Réglage inconnu : ${key}`)
+    if (value === undefined) continue
+    if (!EDITABLE[key](value)) throw new Error(`Valeur refusée pour « ${key} »`)
+    changes[key] = value
+  }
   const { curseforgeKey, ...rest } = changes
   if (curseforgeKey !== undefined && !curseforgeKey.startsWith('•')) setSecret('curseforgeKey', curseforgeKey.trim())
   settings = { ...settings, ...rest }

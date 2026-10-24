@@ -40,6 +40,12 @@ function init(dataRoot) {
 }
 
 const newId = () => crypto.randomBytes(6).toString('hex')
+// Format des identifiants créés par newId : jamais utilisés comme chemin sans ce contrôle
+const ID = /^[0-9a-f]{12}$/
+function checkId(id) {
+  if (typeof id !== 'string' || !ID.test(id)) throw new Error('Identifiant refusé.')
+  return id
+}
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'))
 const writeJson = (file, data) => fs.writeFileSync(file, JSON.stringify(data, null, 2))
 
@@ -75,7 +81,8 @@ function repairLinks() {
       const link = path.join(instancePaths(inst.id).game, name)
       const target = linkedProfile(link)
       if (!target || fs.existsSync(link)) continue
-      const src = path.join(profilePaths(target.profileId).files, target.name)
+      let src
+      try { src = path.join(profilePaths(target.profileId).files, target.name) } catch { continue } // profil supprimé
       if (!fs.existsSync(src)) continue
       removeLink(link)
       linkDir(src, link)
@@ -111,9 +118,12 @@ function mergeOptions(instanceText, profileText, keepBaseVersion = true) {
 
 // ---------- Profils ----------
 
-function profilePaths(id) {
-  const dir = path.join(profilesDir(), id)
-  return { dir, meta: path.join(dir, 'profile.json'), files: path.join(dir, 'files') }
+// Un identifiant inconnu est refusé, sauf à la création du profil
+function profilePaths(id, { create = false } = {}) {
+  const dir = path.join(profilesDir(), checkId(id))
+  const p = { dir, meta: path.join(dir, 'profile.json'), files: path.join(dir, 'files') }
+  if (!create && !fs.existsSync(p.meta)) throw new Error('Profil introuvable.')
+  return p
 }
 
 function countEntries(dir) {
@@ -138,7 +148,7 @@ function profileSummary(files) {
 
 function listProfiles() {
   return fs.readdirSync(profilesDir())
-    .filter((id) => fs.existsSync(profilePaths(id).meta))
+    .filter((id) => ID.test(id) && fs.existsSync(path.join(profilesDir(), id, 'profile.json')))
     .map((id) => {
       const p = profilePaths(id)
       return { ...readJson(p.meta), summary: profileSummary(p.files) }
@@ -148,7 +158,7 @@ function listProfiles() {
 
 function createProfile({ name, color, description }) {
   const id = newId()
-  const p = profilePaths(id)
+  const p = profilePaths(id, { create: true })
   fs.mkdirSync(path.join(p.files, 'shaderpacks'), { recursive: true })
   fs.mkdirSync(path.join(p.files, 'resourcepacks'), { recursive: true })
   const profile = { id, name: name || 'Nouveau profil', color: color || '#f07a1e', description: description || '', createdAt: Date.now() }
@@ -299,6 +309,7 @@ function scanInstances() {
     if (!fs.existsSync(meta)) continue
     try {
       const inst = readJson(meta)
+      if (!ID.test(inst.id)) continue
       folderOf.set(inst.id, folder)
       list.push(inst)
     } catch {}
@@ -306,9 +317,13 @@ function scanInstances() {
   return list
 }
 
+// Un identifiant inconnu ne sert jamais de nom de dossier
 function instancePaths(id) {
+  checkId(id)
   if (!folderOf.has(id)) scanInstances()
-  return pathsIn(folderOf.get(id) || id)
+  const folder = folderOf.get(id)
+  if (!folder) throw new Error('Instance introuvable.')
+  return pathsIn(folder)
 }
 
 function listInstances() {
@@ -414,6 +429,22 @@ function updateInstance(id, changes) {
   return instance
 }
 
+// Seuls champs modifiables depuis l'interface (nom, description, mémoire propre à l'instance)
+const EDITABLE = {
+  name: (v) => typeof v === 'string' && v.trim().length > 0 && v.length <= 200,
+  description: (v) => typeof v === 'string' && v.length <= 5000,
+  memory: (v) => v === null || (Number.isInteger(v) && v >= 512 && v <= 1048576)
+}
+
+function editInstance(id, changes) {
+  if (!changes || typeof changes !== 'object') throw new Error('Modification refusée.')
+  for (const [key, value] of Object.entries(changes)) {
+    if (!Object.hasOwn(EDITABLE, key)) throw new Error(`Champ non modifiable : ${key}`)
+    if (!EDITABLE[key](value)) throw new Error(`Valeur refusée pour « ${key} »`)
+  }
+  return updateInstance(id, changes)
+}
+
 function reapplyProfile(id, profileId, items) {
   const imported = applyProfile(id, profileId, items)
   return updateInstance(id, { profileId, imported })
@@ -443,11 +474,17 @@ function deleteInstance(id) {
 
 // Images personnalisées : kind = 'banner' (grande image) ou 'logo' (vignette carrée).
 // Sans imagePath, l'image par défaut revient.
+const IMAGE_KINDS = ['banner', 'logo']
+const IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.webp', '.gif']
+
 function setInstanceImage(id, kind, imagePath = null) {
+  if (!IMAGE_KINDS.includes(kind)) throw new Error('Type d’image inconnu.')
+  const ext = imagePath ? path.extname(imagePath).toLowerCase() : null
+  if (imagePath && !IMAGE_EXTS.includes(ext)) throw new Error('Format d’image refusé (PNG, JPEG, WebP ou GIF).')
   const p = instancePaths(id)
   for (const f of fs.readdirSync(p.dir)) if (f.startsWith(kind + '.')) fs.rmSync(path.join(p.dir, f))
   if (!imagePath) return updateInstance(id, { [kind + 'File']: null, [kind + 'Rev']: Date.now() })
-  const dest = path.join(p.dir, kind + path.extname(imagePath).toLowerCase())
+  const dest = path.join(p.dir, kind + ext)
   fs.copyFileSync(imagePath, dest)
   return updateInstance(id, { [kind + 'File']: path.basename(dest), [kind + 'Rev']: Date.now() })
 }
@@ -532,6 +569,12 @@ function listInstanceFolder(id, folder) {
     .sort((a, b) => (folder === 'screenshots' ? b.mtime - a.mtime : (a.name || '').localeCompare(b.name || '')))
 }
 
+// Sous-dossier du jeu ouvert depuis la page de l'instance : liste fixe
+function subfolderDir(id, folder) {
+  if (!Object.hasOwn(FOLDERS, folder)) throw new Error('Dossier inconnu')
+  return path.join(instancePaths(id).game, FOLDERS[folder])
+}
+
 function folderPath(id, folder, name) {
   if (!FOLDERS[folder] || name.includes('/') || name.includes('\\') || name.startsWith('..')) throw new Error('Nom de fichier refusé')
   return path.join(instancePaths(id).game, FOLDERS[folder], name)
@@ -559,7 +602,9 @@ function duplicateInstance(id, name) {
     const to = path.join(dest.game, entry)
     if (isLink(from)) {
       const t = linkedProfile(from)
-      linkDir(t ? path.join(profilePaths(t.profileId).files, t.name) : fs.readlinkSync(from), to)
+      let target = fs.readlinkSync(from)
+      if (t) try { target = path.join(profilePaths(t.profileId).files, t.name) } catch {} // profil supprimé
+      linkDir(target, to)
     }
     else copyRecursive(from, to)
   }
@@ -591,7 +636,7 @@ const itemList = () => Object.entries(ITEMS).map(([key, v]) => ({ key, label: v.
 module.exports = {
   init, itemList, mergeOptions,
   listProfiles, createProfile, updateProfile, deleteProfile, profileFilesDir, scanSource, importSelection, detectSources,
-  listInstances, createInstance, updateInstance, deleteInstance, reapplyProfile, saveOptionsToProfile,
+  listInstances, createInstance, updateInstance, editInstance, deleteInstance, reapplyProfile, saveOptionsToProfile,
   setInstanceImage, instanceDir, gameDir, modIcon,
-  listInstanceFolder, folderPath, toggleMod, duplicateInstance, exportInstance
+  listInstanceFolder, subfolderDir, folderPath, toggleMod, duplicateInstance, exportInstance
 }

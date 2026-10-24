@@ -8,6 +8,7 @@ const AdmZip = require('adm-zip')
 const store = require('./store')
 const downloads = require('./downloads')
 const settings = require('./settings')
+const { insideDir, checkVersion } = require('./paths')
 
 const UA = 'TerraLauncher/0.1.0'
 const MR = 'https://api.modrinth.com/v2'
@@ -230,12 +231,6 @@ async function projectDetails(platform, id) {
 
 // ---------- Installation dans une instance existante ----------
 
-function insideDir(base, rel) {
-  const dest = path.resolve(base, rel)
-  if (!dest.startsWith(path.resolve(base) + path.sep)) throw new Error(`Chemin refusé : ${rel}`)
-  return dest
-}
-
 const instanceLoaders = (inst) => (inst.loader === 'quilt' ? ['quilt', 'fabric'] : [inst.loader])
 
 // Trouve les fichiers à télécharger pour un projet Modrinth + ses dépendances obligatoires
@@ -298,8 +293,10 @@ async function installToInstance(project, instanceId) {
 
 // ---------- Modpacks ----------
 
+// Le nom du fichier vient de l'API : seul son dernier segment est gardé, en caractères sûrs
 async function downloadTemp(task, url, name) {
-  const dest = path.join(os.tmpdir(), 'terralauncher', `${Date.now()}-${name}`)
+  const safe = path.basename(String(name || '').replace(/\\/g, '/')).replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 120) || 'modpack'
+  const dest = insideDir(path.join(os.tmpdir(), 'terralauncher'), `${Date.now()}-${safe}`)
   await downloads.fetchToFile(task, url, dest)
   return dest
 }
@@ -353,6 +350,23 @@ async function installModpack({ project, versionId, name, profileId, items }, da
   return store.listInstances().find((i) => i.id === inst.id)
 }
 
+// Fichiers externes d'un .mrpack : hôtes admis par le format Modrinth, empreinte SHA-1 obligatoire
+const PACK_HOSTS = new Set(['cdn.modrinth.com', 'github.com', 'raw.githubusercontent.com', 'gitlab.com'])
+function packUrlOk(u) {
+  try {
+    const url = new URL(u)
+    return url.protocol === 'https:' && url.port === '' && PACK_HOSTS.has(url.hostname)
+  } catch { return false }
+}
+
+function packFile(f, game) {
+  const urls = (Array.isArray(f.downloads) ? f.downloads : []).filter(packUrlOk)
+  if (!urls.length) throw new Error(`Fichier du modpack refusé (adresse non autorisée) : ${f.path}`)
+  const sha1 = String(f.hashes?.sha1 || '').toLowerCase()
+  if (!/^[0-9a-f]{40}$/.test(sha1)) throw new Error(`Fichier du modpack sans empreinte SHA-1 : ${f.path}`)
+  return { url: urls[0], urls, dest: insideDir(game, f.path), sha1, size: f.fileSize }
+}
+
 async function installModrinthPack(task, project, versionId, inst, game) {
   const version = versionId ? await mr(`/version/${versionId}`) : (await mr(`/project/${project.id}/version`))[0]
   const file = version.files.find((f) => f.filename.endsWith('.mrpack')) || version.files[0]
@@ -362,12 +376,15 @@ async function installModrinthPack(task, project, versionId, inst, game) {
   const index = JSON.parse(zip.readAsText('modrinth.index.json'))
   const deps = index.dependencies || {}
   const loader = deps['fabric-loader'] ? 'fabric' : deps['quilt-loader'] ? 'quilt' : deps.neoforge ? 'neoforge' : deps.forge ? 'forge' : 'vanilla'
-  store.updateInstance(inst.id, { version: deps.minecraft, loader, loaderVersion: deps['fabric-loader'] || deps['quilt-loader'] || deps.neoforge || deps.forge || null })
+  const loaderVersion = deps['fabric-loader'] || deps['quilt-loader'] || deps.neoforge || deps.forge || null
+  checkVersion(deps.minecraft, 'Version de Minecraft du modpack')
+  if (loaderVersion) checkVersion(loaderVersion, 'Version du chargeur du modpack')
+  store.updateInstance(inst.id, { version: deps.minecraft, loader, loaderVersion })
   notifyInstances()
 
   const files = index.files
     .filter((f) => f.env?.client !== 'unsupported')
-    .map((f) => ({ url: f.downloads[0], dest: insideDir(game, f.path), sha1: f.hashes?.sha1, size: f.fileSize }))
+    .map((f) => packFile(f, game))
   task.detail = `${files.length} mods et fichiers`
   const failed = await downloads.downloadFiles(task, files)
   extractOverrides(zip, ['overrides', 'client-overrides'], game)
@@ -385,7 +402,10 @@ async function installCurseforgePack(task, project, versionId, inst, game) {
   const manifest = JSON.parse(zip.readAsText('manifest.json'))
   const primary = manifest.minecraft.modLoaders.find((l) => l.primary) || manifest.minecraft.modLoaders[0]
   const [loaderName, ...rest] = (primary?.id || 'vanilla').split('-')
-  store.updateInstance(inst.id, { version: manifest.minecraft.version, loader: LOADER_KEYS.includes(loaderName) ? loaderName : 'vanilla', loaderVersion: rest.join('-') || null })
+  const loaderVersion = rest.join('-') || null
+  checkVersion(manifest.minecraft.version, 'Version de Minecraft du modpack')
+  if (loaderVersion) checkVersion(loaderVersion, 'Version du chargeur du modpack')
+  store.updateInstance(inst.id, { version: manifest.minecraft.version, loader: LOADER_KEYS.includes(loaderName) ? loaderName : 'vanilla', loaderVersion })
   notifyInstances()
 
   const wanted = manifest.files.filter((f) => f.required !== false)

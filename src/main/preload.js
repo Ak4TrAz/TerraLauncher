@@ -6,6 +6,10 @@ const call = async (channel, ...args) => {
   return res.data
 }
 
+// Un fichier glissé sur la fenêtre ne doit pas remplacer l'interface
+window.addEventListener('dragover', (e) => { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'none' })
+window.addEventListener('drop', (e) => e.preventDefault())
+
 contextBridge.exposeInMainWorld('terra', {
   window: {
     minimize: () => call('window:minimize'),
