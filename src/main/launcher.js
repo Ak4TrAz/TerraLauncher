@@ -17,11 +17,66 @@ const JAVA_PLATFORM = process.arch === 'arm64' ? 'windows-arm64' : 'windows-x64'
 
 let root = null
 let notifyStatus = () => {}
+let notifyLog = () => {}
 const running = new Map() // instanceId -> { process, startedAt }
 
-function init(dataRoot, onStatus) {
+function init(dataRoot, onStatus, onLog) {
   root = dataRoot
   notifyStatus = onStatus
+  if (onLog) notifyLog = onLog
+}
+
+// ---------- Journal du jeu ----------
+// Minecraft écrit ses messages sur la sortie standard au format XML de log4j ;
+// on les découpe en lignes { t, level, logger, text } pour l'onglet Journal.
+
+const LOG_MAX = 5000
+const logs = new Map() // instanceId -> lignes de la dernière partie lancée depuis l'ouverture du launcher
+
+const unxml = (s) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&')
+const attr = (head, name) => head.match(new RegExp(`${name}="([^"]*)"`))?.[1]
+const cdata = (body, tagName) => {
+  const m = body.match(new RegExp(`<log4j:${tagName}>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?</log4j:${tagName}>`))
+  return m ? m[1] : null
+}
+
+function logParser() {
+  let buffer = ''
+  const plain = (text) => text.split(/\r?\n/).map((l) => l.trimEnd()).filter((l) => l.trim()).map((l) => ({ t: Date.now(), level: /\b(ERROR|FATAL|Exception|at [\w$.]+\()/.test(l) ? 'ERROR' : /\bWARN/.test(l) ? 'WARN' : 'INFO', logger: null, text: l }))
+  // Renvoie les lignes complètes ; garde la fin incomplète pour le morceau suivant
+  return (chunk, flush = false) => {
+    buffer += chunk
+    const out = []
+    for (;;) {
+      const start = buffer.indexOf('<log4j:Event')
+      if (start < 0) {
+        const cut = flush ? buffer.length : buffer.lastIndexOf('\n') + 1
+        out.push(...plain(buffer.slice(0, cut)))
+        buffer = buffer.slice(cut)
+        break
+      }
+      if (start > 0) out.push(...plain(buffer.slice(0, start)))
+      const end = buffer.indexOf('</log4j:Event>', start)
+      if (end < 0) { buffer = buffer.slice(start); break }
+      const block = buffer.slice(start, end)
+      buffer = buffer.slice(end + '</log4j:Event>'.length)
+      const head = block.slice(0, block.indexOf('>'))
+      const message = cdata(block, 'Message') ?? ''
+      const throwable = cdata(block, 'Throwable')
+      const text = unxml([message, throwable].filter(Boolean).join('\n')).replace(/\r\n?/g, '\n').trimEnd()
+      out.push({ t: Number(attr(head, 'timestamp')) || Date.now(), level: attr(head, 'level') || 'INFO', logger: attr(head, 'logger') || null, thread: attr(head, 'thread') || null, text })
+    }
+    return out
+  }
+}
+
+// Lignes de la partie en cours ou de la dernière ; sinon relues dans le fichier du launcher
+function readLog(instanceId) {
+  if (logs.has(instanceId)) return { running: running.has(instanceId), lines: logs.get(instanceId) }
+  const file = path.join(store.gameDir(instanceId), 'logs', 'terralauncher-latest.log')
+  if (!fs.existsSync(file)) return { running: false, lines: [] }
+  const lines = logParser()(fs.readFileSync(file, 'utf8'), true)
+  return { running: false, lines: lines.slice(-LOG_MAX), fromFile: true }
 }
 
 async function getJson(url) {
@@ -63,12 +118,11 @@ function javaPaths(component) {
   return { dir, javaw: path.join(dir, 'bin', 'javaw.exe'), java: path.join(dir, 'bin', 'java.exe'), marker: path.join(dir, '.terralauncher-ok') }
 }
 
-// Installe le Java fourni par Mojang pour cette version (ex. java-runtime-delta = Java 21)
-async function ensureJava(task, component) {
+// Fichiers du Java fourni par Mojang pour cette version (ex. java-runtime-delta = Java 21).
+// Renvoie { files, version } ; files est vide si ce Java est déjà installé.
+async function javaFiles(component) {
   const p = javaPaths(component)
-  if (fs.existsSync(p.marker) && fs.existsSync(p.javaw)) return p
-  task.detail = `Installation de Java (${component})…`
-  downloads.notify(true)
+  if (fs.existsSync(p.marker) && fs.existsSync(p.javaw)) return { files: [], version: null }
   const all = await getJson(JAVA_RUNTIMES)
   const target = all[JAVA_PLATFORM]?.[component]?.[0]
   if (!target) throw new Error(`Java « ${component} » indisponible pour ${JAVA_PLATFORM}.`)
@@ -79,31 +133,27 @@ async function ensureJava(task, component) {
     if (entry.type === 'directory') fs.mkdirSync(dest, { recursive: true })
     else if (entry.type === 'file') files.push({ url: entry.downloads.raw.url, dest, sha1: entry.downloads.raw.sha1, size: entry.downloads.raw.size })
   }
-  const failed = await downloads.downloadFiles(task, files, 8)
-  if (failed.length) throw new Error(`Java : ${failed.length} fichier(s) en échec.`)
-  fs.writeFileSync(p.marker, target.version.name)
-  return p
+  return { files, version: target.version.name }
 }
 
 // ---------- Version de base ----------
 
-async function ensureVanilla(task, version) {
+// Fichier de version de Minecraft (téléchargé une fois, puis relu sur le disque)
+async function vanillaJson(version) {
   const dir = insideDir(path.join(root, 'versions'), checkVersion(version, 'Version de Minecraft'))
   const jsonPath = path.join(dir, `${version}.json`)
-  let json
-  if (fs.existsSync(jsonPath)) json = JSON.parse(fs.readFileSync(jsonPath, 'utf8'))
-  else {
-    const entry = (await getJson(VERSION_MANIFEST)).versions.find((v) => v.id === version)
-    if (!entry) throw new Error(`Version de Minecraft « ${version} » introuvable.`)
-    json = await getJson(entry.url)
-    fs.mkdirSync(dir, { recursive: true })
-    fs.writeFileSync(jsonPath, JSON.stringify(json))
-  }
-  const client = json.downloads.client
-  task.detail = `Minecraft ${version}`
-  const failed = await downloads.downloadFiles(task, [{ url: client.url, dest: path.join(dir, `${version}.jar`), sha1: client.sha1, size: client.size }])
-  if (failed.length) throw new Error(`Client du jeu : ${failed[0].error}`)
+  if (fs.existsSync(jsonPath)) return JSON.parse(await fs.promises.readFile(jsonPath, 'utf8'))
+  const entry = (await getJson(VERSION_MANIFEST)).versions.find((v) => v.id === version)
+  if (!entry) throw new Error(`Version de Minecraft « ${version} » introuvable.`)
+  const json = await getJson(entry.url)
+  fs.mkdirSync(dir, { recursive: true })
+  fs.writeFileSync(jsonPath, JSON.stringify(json))
   return json
+}
+
+function clientFile(json, version) {
+  const client = json.downloads.client
+  return { url: client.url, dest: path.join(root, 'versions', version, `${version}.jar`), sha1: client.sha1, size: client.size }
 }
 
 // ---------- Loaders ----------
@@ -174,38 +224,38 @@ async function ensureLoader(task, inst, javaExe) {
 
 const RESOURCES = 'https://resources.download.minecraft.net'
 
-// Télécharge librairies, index et objets de ressources, et config de logs de la version résolue
-// Chaque chemin venu du fichier de version reste dans son dossier
-async function ensureDependencies(task, resolved) {
-  const libs = resolved.libraries
+// Librairies d'une version résolue ; chaque chemin venu du fichier de version reste dans son dossier
+function libraryFiles(resolved) {
+  return resolved.libraries
     .filter((l) => l.download?.url)
     .map((l) => ({ url: l.download.url, dest: insideDir(path.join(root, 'libraries'), l.download.path), sha1: l.download.sha1 || undefined, size: l.download.size > 0 ? l.download.size : 0 }))
-  task.detail = `Librairies (${libs.length})`
-  downloads.notify(true)
-  let failed = await downloads.downloadFiles(task, libs, 8)
-  if (failed.length) throw new Error(`Librairies : ${failed.length} fichier(s) en échec (${failed[0].error})`)
+}
 
+// Index des ressources (téléchargé tout de suite, il est petit), config de logs et objets de ressources.
+// L'index n'entre pas dans la progression de la tâche : seul, il la mettrait à 100 % avant le vrai téléchargement.
+async function resourceFiles(resolved) {
   const idx = resolved.assetIndex
   const indexPath = insideDir(path.join(root, 'assets', 'indexes'), `${idx.id}.json`)
-  failed = await downloads.downloadFiles(task, [{ url: idx.url, dest: indexPath, sha1: idx.sha1, size: idx.size }])
+  const failed = await downloads.downloadFiles({ received: 0, total: 0 }, [{ url: idx.url, dest: indexPath, sha1: idx.sha1, size: idx.size }])
   if (failed.length) throw new Error(`Index des ressources : ${failed[0].error}`)
 
+  const files = []
   const logging = resolved.logging?.client?.file
-  if (logging?.url) await downloads.downloadFiles(task, [{ url: logging.url, dest: insideDir(path.join(root, 'assets', 'log_configs'), logging.id), sha1: logging.sha1, size: logging.size }])
-
-  const objects = JSON.parse(fs.readFileSync(indexPath, 'utf8')).objects || {}
+  if (logging?.url) files.push({ url: logging.url, dest: insideDir(path.join(root, 'assets', 'log_configs'), logging.id), sha1: logging.sha1, size: logging.size })
+  const objects = JSON.parse(await fs.promises.readFile(indexPath, 'utf8')).objects || {}
   const seen = new Set()
-  const assets = []
   for (const { hash, size } of Object.values(objects)) {
     if (seen.has(hash)) continue
     if (!/^[0-9a-f]{40}$/.test(hash)) throw new Error('Index des ressources invalide.')
     seen.add(hash)
-    assets.push({ url: `${RESOURCES}/${hash.slice(0, 2)}/${hash}`, dest: path.join(root, 'assets', 'objects', hash.slice(0, 2), hash), sha1: hash, size })
+    files.push({ url: `${RESOURCES}/${hash.slice(0, 2)}/${hash}`, dest: path.join(root, 'assets', 'objects', hash.slice(0, 2), hash), sha1: hash, size })
   }
-  task.detail = `Ressources du jeu (${assets.length} fichiers)`
-  downloads.notify(true)
-  failed = await downloads.downloadFiles(task, assets, 12)
-  if (failed.length) throw new Error(`Ressources : ${failed.length} fichier(s) en échec (${failed[0].error})`)
+  return files
+}
+
+async function downloadAll(task, files, what) {
+  const failed = await downloads.downloadFiles(task, files, 12)
+  if (failed.length) throw new Error(`${what} : ${failed.length} fichier(s) en échec (${failed[0].error})`)
 }
 
 // ---------- Préparation complète ----------
@@ -228,28 +278,42 @@ function prepareInBackground(instanceId) {
     .finally(() => !running.has(instanceId) && notifyStatus({ instanceId, state: 'stopped' }))
 }
 
+// La liste complète des fichiers est établie avant de télécharger, puis tout part en un seul lot :
+// la progression affichée ne recule pas quand une nouvelle étape commence.
 async function doPrepare(instanceId, { force = false } = {}) {
   const inst = store.listInstances().find((i) => i.id === instanceId)
   if (!inst) throw new Error('Instance introuvable.')
   if (inst.installing) throw new Error('Le modpack est encore en cours d’installation.')
 
-  const task = downloads.begin(`Préparation de « ${inst.name} »`, 'Vérification…')
+  const task = downloads.begin(`Préparation de « ${inst.name} »`, 'Analyse…')
   try {
-    const vanilla = await ensureVanilla(task, inst.version)
+    // 1. Jeu, Java, librairies de base et ressources : connus d'avance, téléchargés ensemble
+    const vanilla = await vanillaJson(inst.version)
     const component = checkComponent(vanilla.javaVersion?.component || 'jre-legacy')
-    const java = await ensureJava(task, component)
+    const java = javaPaths(component)
+    const runtime = await javaFiles(component)
 
     let versionId = inst.preparedVersion
     const jsonOk = isVersion(versionId) && fs.existsSync(path.join(root, 'versions', versionId, `${versionId}.json`))
-    if (force || !jsonOk) {
+    const full = force || !jsonOk // version (ou chargeur) pas encore installée, ou réparation
+    const files = [clientFile(vanilla, inst.version), ...runtime.files]
+    if (full) {
+      const base = await core.Version.parse(root, inst.version)
+      files.push(...libraryFiles(base), ...(await resourceFiles(base)))
+    }
+    task.detail = runtime.files.length ? `Minecraft ${inst.version} et Java (${component})` : full ? `Minecraft ${inst.version} et ses ressources` : 'Vérification…'
+    downloads.notify(true)
+    await downloadAll(task, files, 'Téléchargement')
+    if (runtime.version) fs.writeFileSync(java.marker, runtime.version)
+
+    // 2. Chargeur de mods et ses librairies (petits ; celles de la version de base sont déjà là)
+    if (full) {
       const loader = await ensureLoader(task, inst, java.java)
       versionId = checkVersion(loader.id, 'Version à lancer')
       store.updateInstance(inst.id, { loaderVersion: loader.loaderVersion })
-    }
-
-    if (force || inst.preparedVersion !== versionId) {
       const resolved = await core.Version.parse(root, versionId)
-      await ensureDependencies(task, resolved)
+      task.detail = 'Librairies du chargeur'
+      await downloadAll(task, libraryFiles(resolved), 'Librairies')
       store.updateInstance(inst.id, { preparedVersion: versionId, javaComponent: component })
     }
 
@@ -331,13 +395,26 @@ async function launch(instanceId, session, options, { join } = {}) {
     fs.mkdirSync(path.join(game, 'logs'), { recursive: true })
     const log = fs.createWriteStream(path.join(game, 'logs', 'terralauncher-latest.log'))
     const tail = []
+    const lines = []
+    logs.set(instanceId, lines)
+    const parse = logParser()
+    let pending = [] // envoyées à l'interface par paquets (au plus 4 fois par seconde)
+    let flushTimer = null
+    const flush = () => { flushTimer = null; if (pending.length) notifyLog({ instanceId, lines: pending }); pending = [] }
     const capture = (chunk) => {
       log.write(chunk)
       tail.push(...chunk.toString().split(/\r?\n/))
       if (tail.length > 80) tail.splice(0, tail.length - 80)
+      const parsed = parse(chunk.toString())
+      if (!parsed.length) return
+      lines.push(...parsed)
+      if (lines.length > LOG_MAX) lines.splice(0, lines.length - LOG_MAX)
+      pending.push(...parsed)
+      if (!flushTimer) flushTimer = setTimeout(flush, 250)
     }
     proc.stdout?.on('data', capture)
     proc.stderr?.on('data', capture)
+    notifyLog({ instanceId, reset: true })
 
     const startedAt = Date.now()
     running.set(instanceId, { process: proc, startedAt })
@@ -348,6 +425,11 @@ async function launch(instanceId, session, options, { join } = {}) {
     watcher.on('minecraft-window-ready', () => notifyStatus({ instanceId, state: 'running' }))
     watcher.on('minecraft-exit', ({ code, crashReport, crashReportLocation }) => {
       log.end()
+      const last = parse('', true)
+      lines.push(...last)
+      pending.push(...last)
+      clearTimeout(flushTimer)
+      flush()
       running.delete(instanceId)
       const current = store.listInstances().find((i) => i.id === instanceId)
       store.updateInstance(instanceId, { playTime: (current?.playTime || 0) + (Date.now() - startedAt) })
@@ -374,4 +456,4 @@ function stop(instanceId) {
 
 const totalMemoryMb = () => Math.round(os.totalmem() / 1024 / 1024)
 
-module.exports = { init, prepare, prepareInBackground, launch, stop, isRunning, totalMemoryMb }
+module.exports = { init, prepare, prepareInBackground, launch, stop, isRunning, totalMemoryMb, readLog }

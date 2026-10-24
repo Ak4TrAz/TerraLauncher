@@ -1,17 +1,23 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { ArrowLeft, FileText, Puzzle, Image as ImageIcon, Sparkles, Camera, Settings2, MoreVertical, ChevronRight, FolderOpen, Copy, Upload, MemoryStick, Server, Trash2, Plus, Search, Wrench, Loader2, X, ImagePlus, Download, RefreshCw } from 'lucide-react'
+import { ArrowLeft, FileText, Puzzle, Image as ImageIcon, Sparkles, Camera, Settings2, MoreVertical, ChevronRight, FolderOpen, Copy, Upload, MemoryStick, Server, Trash2, Plus, Search, Wrench, Loader2, X, ImagePlus, Download, RefreshCw, Earth, ScrollText, ShieldCheck } from 'lucide-react'
 import Banner, { Logo } from '../components/Banner'
 import PlayButton from '../components/PlayButton'
-import { Menu, VersionChip, LoaderChip, ProfileChip, GrassBlock, formatPlayTime } from '../components/ui'
+import { Menu, VersionChip, LoaderChip, ProfileChip, MinecraftIcon, EditableName, formatPlayTime } from '../components/ui'
 import { api, LOADERS } from '../api'
+import ModpackCard from '../components/ModpackCard'
+import WorldsTab from '../components/WorldsTab'
+import GameLog from '../components/GameLog'
+import PendingBackups from '../components/PendingBackups'
 
 const TABS = [
   { key: 'overview', label: 'Aperçu', icon: FileText },
   { key: 'mods', label: 'Mods', icon: Puzzle },
   { key: 'resourcepacks', label: 'Packs de ressources', icon: ImageIcon },
   { key: 'shaderpacks', label: 'Shaders', icon: Sparkles },
+  { key: 'worlds', label: 'Mondes', icon: Earth },
   { key: 'screenshots', label: 'Captures', icon: Camera },
+  { key: 'logs', label: 'Journal', icon: ScrollText },
   { key: 'settings', label: 'Paramètres', icon: Settings2 }
 ]
 
@@ -82,6 +88,15 @@ function FileList({ inst, folder, onAdd, toast }) {
       setUpdating((u) => ({ ...u, [taskId]: names }))
     } catch (e) { toast(e.message, 'error') }
   }
+  // Remplace les mods prévus pour une autre version de Minecraft (ou un autre chargeur)
+  const adapting = Object.values(updating).some((names) => names.length === 0)
+  const runAdapt = async () => {
+    try {
+      const taskId = await api.content.adaptMods(inst.id)
+      setUpdating((u) => ({ ...u, [taskId]: [] }))
+      toast('Vérification de la compatibilité lancée (suivi dans les téléchargements).')
+    } catch (e) { toast(e.message, 'error') }
+  }
 
   return (
     <div className="space-y-4">
@@ -91,6 +106,11 @@ function FileList({ inst, folder, onAdd, toast }) {
           <input className="input h-11 pl-12" placeholder="Rechercher…" value={query} onChange={(e) => setQuery(e.target.value)} />
         </div>
         {onAdd && <button className="btn-primary" onClick={onAdd}><Plus className="h-4 w-4" /> Ajouter</button>}
+        {isMods && inst.loader !== 'vanilla' && (
+          <button className="btn-ghost" disabled={adapting} onClick={runAdapt} title={`Remplace les mods prévus pour une autre version par leur version pour Minecraft ${inst.version}, et désactive ceux qui n’en ont pas`}>
+            {adapting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />} Vérifier la compatibilité
+          </button>
+        )}
         <button className="btn-ghost" onClick={() => api.instances.openSubfolder(inst.id, folder).catch((e) => toast(e.message, 'error'))}><FolderOpen className="h-4 w-4" /> Ouvrir le dossier</button>
       </div>
       {files && (
@@ -195,7 +215,8 @@ function Overview({ inst, actions, onOpenShot, toast, setTab }) {
         <Screenshots inst={inst} limit={2} onOpen={onOpenShot} toast={toast} />
       </div>
       <div className="space-y-3">
-        <InfoCard icon={<GrassBlock className="h-10 w-10" />} title="Version du jeu" value={`Minecraft Java ${inst.version}`} />
+        {inst.source?.projectId && <ModpackCard inst={inst} toast={toast} />}
+        <InfoCard icon={<MinecraftIcon className="h-10 w-10" />} title="Version du jeu" value={`Minecraft Java ${inst.version}`} />
         <InfoCard icon={<img src={loader?.icon} className="h-9 w-9 object-contain" alt="" />} title="Chargeur" value={`${loader?.label || 'Vanilla'}${inst.loaderVersion ? ` ${inst.loaderVersion}` : ''}`} />
         <InfoCard icon={<MemoryStick className="h-8 w-8" />} title="Mémoire allouée" value={memory} onClick={() => setTab('settings')} />
         <InfoCard icon={<FolderOpen className="h-8 w-8" />} title="Ouvrir le dossier" value="Afficher le dossier de cette instance" onClick={() => actions.openFolder(inst)} />
@@ -214,6 +235,7 @@ function InstanceSettings({ inst, actions, totalMemory }) {
   const [custom, setCustom] = useState(!!inst.memory)
   const [memory, setMemory] = useState(inst.memory || 4096)
   useEffect(() => { setName(inst.name); setCustom(!!inst.memory); setMemory(inst.memory || 4096) }, [inst.id])
+  useEffect(() => setName(inst.name), [inst.name]) // renommée au crayon pendant que l'onglet est ouvert
   const max = Math.max(2048, Math.floor((totalMemory * 0.75) / 512) * 512)
   const save = () => actions.update(inst, { name: name.trim() || inst.name, memory: custom ? memory : null }, 'Réglages de l’instance enregistrés.')
 
@@ -257,6 +279,7 @@ export default function InstanceDetail({ inst, profile, actions, menuItems, onBa
   useEffect(() => { api.game.totalMemory().then(setTotalMemory).catch(() => {}) }, [])
   useEffect(() => setTab('overview'), [inst?.id])
   if (!inst) return null
+  const running = ['starting', 'running'].includes(actions.statusOf(inst.id)?.state)
 
   return (
     <div className="space-y-5">
@@ -272,7 +295,7 @@ export default function InstanceDetail({ inst, profile, actions, menuItems, onBa
         <div className="absolute inset-x-5 bottom-5 flex items-end gap-5">
           <div className="h-[115px] w-[115px] shrink-0 overflow-hidden rounded-xl border-[3px] border-white/85 shadow-xl"><Logo instance={inst} /></div>
           <div className="min-w-0 flex-1 pb-1">
-            <h1 className="mb-3 truncate text-4xl font-extrabold drop-shadow">{inst.name}</h1>
+            <EditableName as="h1" name={inst.name} onSave={(name) => actions.update(inst, { name }, `Instance renommée en « ${name} ».`)} wrapperClassName="mb-3" className="text-4xl font-extrabold drop-shadow" icon="h-5 w-5" />
             <div className="flex flex-wrap gap-2">
               <VersionChip version={inst.version} />
               <LoaderChip loader={inst.loader} />
@@ -285,6 +308,8 @@ export default function InstanceDetail({ inst, profile, actions, menuItems, onBa
           </Menu>
         </div>
       </div>
+
+      <PendingBackups inst={inst} toast={toast} />
 
       <div className="flex gap-1 border-b border-bark-700">
         {TABS.map((t) => (
@@ -299,7 +324,9 @@ export default function InstanceDetail({ inst, profile, actions, menuItems, onBa
       {tab === 'mods' && <FileList inst={inst} folder="mods" toast={toast} onAdd={inst.loader !== 'vanilla' ? () => onAddContent('mod') : null} />}
       {tab === 'resourcepacks' && <FileList inst={inst} folder="resourcepacks" toast={toast} onAdd={() => onAddContent('resourcepack')} />}
       {tab === 'shaderpacks' && <FileList inst={inst} folder="shaderpacks" toast={toast} onAdd={() => onAddContent('shader')} />}
+      {tab === 'worlds' && <WorldsTab inst={inst} running={running} toast={toast} />}
       {tab === 'screenshots' && <Screenshots inst={inst} onOpen={setShot} toast={toast} />}
+      {tab === 'logs' && <GameLog inst={inst} running={running} toast={toast} />}
       {tab === 'settings' && <InstanceSettings inst={inst} actions={actions} totalMemory={totalMemory} />}
 
       {shot && (

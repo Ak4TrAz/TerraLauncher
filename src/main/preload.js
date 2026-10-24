@@ -42,6 +42,7 @@ contextBridge.exposeInMainWorld('terra', {
     openDataFolder: () => call('app:openDataFolder'),
     version: () => call('app:version'),
     installUpdate: () => call('app:installUpdate'),
+    capture: (rect) => call('window:capture', rect),
     onUpdate: (fn) => {
       const listener = (_e, info) => fn(info)
       ipcRenderer.on('app:update', listener)
@@ -63,7 +64,20 @@ contextBridge.exposeInMainWorld('terra', {
     install: (project, instanceId) => call('content:install', project, instanceId),
     installModpack: (opts) => call('content:installModpack', opts),
     checkModUpdates: (instanceId) => call('content:checkModUpdates', instanceId),
-    updateMods: (instanceId, names) => call('content:updateMods', instanceId, names)
+    updateMods: (instanceId, names) => call('content:updateMods', instanceId, names),
+    checkModpackUpdate: (instanceId) => call('content:checkModpackUpdate', instanceId),
+    updateModpack: (instanceId, versionId, opts) => call('content:updateModpack', instanceId, versionId, opts),
+    adaptMods: (instanceId) => call('content:adaptMods', instanceId)
+  },
+  worlds: {
+    list: (id) => call('worlds:list', id),
+    backup: (id, name) => call('worlds:backup', id, name),
+    restore: (id, name, file) => call('worlds:restore', id, name, file),
+    trash: (id, name) => call('worlds:trash', id, name),
+    trashBackup: (id, name, file) => call('worlds:trashBackup', id, name, file),
+    openFolder: (id, name) => call('worlds:openFolder', id, name),
+    openBackups: (id, name) => call('worlds:openBackups', id, name),
+    resolvePending: (id, remove) => call('worlds:resolvePending', id, remove)
   },
   game: {
     launch: (id, opts) => call('game:launch', id, opts),
@@ -74,6 +88,12 @@ contextBridge.exposeInMainWorld('terra', {
       const listener = (_e, status) => fn(status)
       ipcRenderer.on('game:status', listener)
       return () => ipcRenderer.removeListener('game:status', listener)
+    },
+    log: (id) => call('game:log', id),
+    onLog: (fn) => {
+      const listener = (_e, log) => fn(log)
+      ipcRenderer.on('game:log', listener)
+      return () => ipcRenderer.removeListener('game:log', listener)
     }
   },
   onInstancesChanged: (fn) => {
@@ -106,6 +126,7 @@ contextBridge.exposeInMainWorld('terra', {
     toggleMod: (id, name) => call('instances:toggleMod', id, name),
     trashFile: (id, folder, name) => call('instances:trashFile', id, folder, name),
     openSubfolder: (id, folder) => call('instances:openSubfolder', id, folder),
+    openLogs: (id) => call('instances:openLogs', id),
     duplicate: (id, name) => call('instances:duplicate', id, name),
     exportZip: (id) => call('instances:export', id)
   }

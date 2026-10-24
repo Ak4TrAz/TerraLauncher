@@ -1,9 +1,9 @@
 import React, { useMemo, useState } from 'react'
-import { motion } from 'framer-motion'
-import { Search, LayoutGrid, List, ArrowUpDown, Play, MoreVertical, Plus, Clock, FolderOpen, Image, RefreshCw, Save, Trash2, Sparkles, Loader2, AlertTriangle, Wrench, Server, Info, ImagePlus, RotateCcw, Download } from 'lucide-react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { Search, LayoutGrid, List, ArrowUpDown, Play, MoreVertical, Plus, Clock, FolderOpen, Image, RefreshCw, Save, Trash2, Sparkles, Loader2, AlertTriangle, Wrench, Server, Info, ImagePlus, RotateCcw, Download, LibraryBig } from 'lucide-react'
 import Banner, { Logo } from '../components/Banner'
 import PlayButton from '../components/PlayButton'
-import { Menu, Select, VersionChip, LoaderChip, ProfileChip, CubesIcon, formatPlayTime } from '../components/ui'
+import { Menu, Select, VersionChip, LoaderChip, ProfileChip, EditableName, formatPlayTime } from '../components/ui'
 
 const SORTS = [
   { key: 'lastPlayed', label: 'Dernière utilisation' },
@@ -21,7 +21,7 @@ function sortInstances(list, sort) {
 function PageTitle({ onCreate, onImport }) {
   return (
     <div className="flex items-center gap-4">
-      <CubesIcon />
+      <LibraryBig className="h-14 w-14 shrink-0 text-ember-500" strokeWidth={2.25} />
       <div className="flex-1">
         <h1 className="text-3xl font-extrabold xl:text-[34px] leading-tight tracking-tight">Votre bibliothèque</h1>
         <p className="text-[15px] text-orange-50/60">Gérez et lancez vos instances Minecraft Java.</p>
@@ -34,6 +34,13 @@ function PageTitle({ onCreate, onImport }) {
       </button>
     </div>
   )
+}
+
+// Barre qui défile en bas d'une instance tant qu'elle se prépare (téléchargements) ou s'installe
+function WorkingBar({ inst, actions }) {
+  const state = actions.statusOf(inst.id)?.state
+  if (!inst.installing && state !== 'preparing') return null
+  return <div className="working-bar absolute inset-x-0 bottom-0 z-10 h-1 bg-black/40" title="Préparation en cours (détail dans les téléchargements)" />
 }
 
 // Bandeau sur l'image pendant l'installation d'un modpack, ou en cas d'échec
@@ -61,9 +68,15 @@ export function instanceMenu(inst, a) {
   ]
 }
 
-function Hero({ inst, profile, actions }) {
+// Une carte supprimée s'efface (le froissement se joue dans la fenêtre de suppression, au premier plan) ;
+// une carte qui change seulement de place (elle devient la grande carte du haut) disparaît sans animation.
+const removal = (id) => ({ exit: (alive) => (alive?.has(id) ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, scale: 0.92, transition: { duration: 0.2 } }) })
+// Les autres cartes glissent doucement à sa place
+const GLIDE = { layout: { type: 'spring', stiffness: 260, damping: 30 } }
+
+const Hero = React.forwardRef(function Hero({ inst, profile, actions }, ref) {
   return (
-    <motion.div layout className="group relative h-[290px] overflow-hidden rounded-2xl border border-bark-700/80 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.8)]">
+    <motion.div ref={ref} layout transition={GLIDE} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit="exit" variants={removal(inst.id)} className="group relative h-[200px] overflow-hidden rounded-2xl border border-bark-700/80 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.8)]">
       <div className="absolute inset-0 transition duration-700 group-hover:scale-[1.03]">
         <Banner instance={inst} />
       </div>
@@ -71,16 +84,16 @@ function Hero({ inst, profile, actions }) {
       {inst.installing || inst.installError ? (
         <div className="absolute left-2 top-2"><InstallBadge inst={inst} /></div>
       ) : (
-        <span className="chip absolute left-5 top-5 bg-white/15 font-semibold uppercase tracking-wide">
+        <span className="chip absolute left-4 top-4 bg-white/15 font-semibold uppercase tracking-wide">
           <Clock className="h-4 w-4" /> {inst.lastPlayed ? 'Dernière partie' : 'Récente'}
         </span>
       )}
-      <div className="absolute inset-x-5 bottom-5 flex items-end gap-5">
-        <div className="h-[110px] w-[110px] shrink-0 cursor-pointer overflow-hidden rounded-xl border-[3px] border-white/85 shadow-xl" onClick={() => actions.open(inst)}>
+      <div className="absolute inset-x-5 bottom-4 flex items-end gap-5">
+        <div className="h-[88px] w-[88px] shrink-0 cursor-pointer overflow-hidden rounded-xl border-[3px] border-white/85 shadow-xl" onClick={() => actions.open(inst)}>
           <Logo instance={inst} />
         </div>
         <div className="min-w-0 flex-1 pb-1">
-          <h2 className="mb-3 cursor-pointer truncate text-3xl font-extrabold drop-shadow hover:underline" onClick={() => actions.open(inst)}>{inst.name}</h2>
+          <EditableName name={inst.name} onOpen={() => actions.open(inst)} onSave={(name) => actions.update(inst, { name }, `Instance renommée en « ${name} ».`)} wrapperClassName="mb-2" className="text-3xl font-extrabold drop-shadow" icon="h-5 w-5" />
           <div className="flex flex-wrap gap-2">
             <VersionChip version={inst.version} />
             <LoaderChip loader={inst.loader} />
@@ -94,18 +107,24 @@ function Hero({ inst, profile, actions }) {
           </button>
         </Menu>
       </div>
+      <WorkingBar inst={inst} actions={actions} />
     </motion.div>
   )
-}
+})
 
-function Card({ inst, profile, actions, index }) {
+const Card = React.forwardRef(function Card({ inst, profile, actions, index }, ref) {
   return (
     <motion.div
+      ref={ref}
       layout
+      transition={GLIDE}
       initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.04 }}
-      className="group overflow-hidden rounded-2xl border border-bark-700/80 bg-bark-900/90 transition hover:-translate-y-1 hover:border-ember-500/40 hover:shadow-[0_16px_40px_-16px_rgba(240,122,30,0.35)]"
+      animate={{ opacity: 1, y: 0, transition: { delay: index * 0.04 } }}
+      exit="exit"
+      variants={removal(inst.id)}
+      whileHover={{ y: -4 }}
+      // Pas de transition CSS sur la position : elle contrarierait les animations (glissement, suppression)
+      className="group relative overflow-hidden rounded-2xl border border-bark-700/80 bg-bark-900/90 transition-[border-color,box-shadow] duration-200 hover:border-ember-500/40 hover:shadow-[0_16px_40px_-16px_rgba(240,122,30,0.35)]"
     >
       <div className="relative h-[170px] cursor-pointer overflow-hidden" onClick={() => actions.open(inst)}>
         <div className="h-full w-full transition duration-500 group-hover:scale-105">
@@ -116,7 +135,7 @@ function Card({ inst, profile, actions, index }) {
       <div className="p-4">
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
-            <h3 className="mb-2.5 cursor-pointer truncate text-xl font-bold hover:underline" onClick={() => actions.open(inst)}>{inst.name}</h3>
+            <EditableName as="h3" name={inst.name} onOpen={() => actions.open(inst)} onSave={(name) => actions.update(inst, { name }, `Instance renommée en « ${name} ».`)} wrapperClassName="mb-2.5" className="text-xl font-bold" />
             {inst.playTime > 0 && <p className="-mt-1.5 mb-2 text-xs text-cream-muted">{formatPlayTime(inst.playTime)} de jeu</p>}
             <div className="flex flex-wrap gap-1.5">
               <VersionChip version={inst.version} />
@@ -132,16 +151,17 @@ function Card({ inst, profile, actions, index }) {
           </Menu>
         </div>
       </div>
+      <WorkingBar inst={inst} actions={actions} />
     </motion.div>
   )
-}
+})
 
-function Row({ inst, profile, actions }) {
+const Row = React.forwardRef(function Row({ inst, profile, actions }, ref) {
   return (
-    <motion.div layout className="flex items-center gap-4 rounded-2xl border border-bark-700/80 bg-bark-900/90 p-3 transition hover:border-ember-500/40">
+    <motion.div ref={ref} layout transition={GLIDE} exit="exit" variants={removal(inst.id)} className="relative flex items-center gap-4 overflow-hidden rounded-2xl border border-bark-700/80 bg-bark-900/90 p-3 transition-colors hover:border-ember-500/40">
       <div className="h-14 w-24 shrink-0 overflow-hidden rounded-lg"><Banner instance={inst} /></div>
       <div className="min-w-0 flex-1">
-        <h3 className="cursor-pointer truncate text-lg font-bold hover:underline" onClick={() => actions.open(inst)}>{inst.name}</h3>
+        <EditableName as="h3" name={inst.name} onOpen={() => actions.open(inst)} onSave={(name) => actions.update(inst, { name }, `Instance renommée en « ${name} ».`)} className="text-lg font-bold" />
         {inst.playTime > 0 && <p className="text-xs text-cream-muted">{formatPlayTime(inst.playTime)} de jeu</p>}
       </div>
       <div className="flex gap-1.5">
@@ -153,9 +173,10 @@ function Row({ inst, profile, actions }) {
       <Menu items={instanceMenu(inst, actions)}>
         <button className="flex h-10 w-9 items-center justify-center rounded-xl bg-bark-800 hover:bg-bark-700"><MoreVertical className="h-5 w-5" /></button>
       </Menu>
+      <WorkingBar inst={inst} actions={actions} />
     </motion.div>
   )
-}
+})
 
 export default function Library({ instances, profiles, actions }) {
   const [query, setQuery] = useState('')
@@ -163,6 +184,7 @@ export default function Library({ instances, profiles, actions }) {
   const setView = (v) => { setViewState(v); try { localStorage.setItem('terra.libraryView', v) } catch {} }
   const [sort, setSort] = useState('lastPlayed')
   const profileOf = (inst) => profiles.find((p) => p.id === inst.profileId)
+  const alive = useMemo(() => new Set(instances.map((i) => i.id)), [instances])
 
   const sorted = useMemo(() => sortInstances(instances, sort), [instances, sort])
   const filtered = sorted.filter((i) => i.name.toLowerCase().includes(query.toLowerCase()))
@@ -203,14 +225,20 @@ export default function Library({ instances, profiles, actions }) {
         </div>
       ) : (
         <>
-          {hero && <Hero inst={hero} profile={profileOf(hero)} actions={actions} />}
+          <AnimatePresence mode="wait" custom={alive}>
+            {hero && <Hero key={hero.id} inst={hero} profile={profileOf(hero)} actions={actions} />}
+          </AnimatePresence>
           {view === 'grid' ? (
             <div className="grid grid-cols-2 gap-5 xl:grid-cols-3">
-              {rest.map((inst, i) => <Card key={inst.id} inst={inst} profile={profileOf(inst)} actions={actions} index={i} />)}
+              <AnimatePresence mode="popLayout" custom={alive}>
+                {rest.map((inst, i) => <Card key={inst.id} inst={inst} profile={profileOf(inst)} actions={actions} index={i} />)}
+              </AnimatePresence>
             </div>
           ) : (
             <div className="space-y-3">
-              {rest.map((inst) => <Row key={inst.id} inst={inst} profile={profileOf(inst)} actions={actions} />)}
+              <AnimatePresence mode="popLayout" custom={alive}>
+                {rest.map((inst) => <Row key={inst.id} inst={inst} profile={profileOf(inst)} actions={actions} />)}
+              </AnimatePresence>
             </div>
           )}
           {filtered.length === 0 && <p className="py-10 text-center text-orange-50/50">Aucune instance ne correspond à « {query} ».</p>}

@@ -9,7 +9,7 @@ const CSP = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https: terra:",
   "font-src 'self' data:",
-  "connect-src 'self' https://piston-meta.mojang.com https://api.modrinth.com",
+  "connect-src 'self' terra: https://piston-meta.mojang.com https://api.modrinth.com",
   "media-src 'none'",
   "object-src 'none'",
   "frame-src 'none'",

@@ -9,6 +9,7 @@ const auth = require('./auth')
 const content = require('./content')
 const launcher = require('./launcher')
 const external = require('./external')
+const worlds = require('./worlds')
 const { autoUpdater } = require('electron-updater')
 
 const isDev = process.env.VITE_DEV === '1'
@@ -31,7 +32,10 @@ const realPath = (p) => { try { return fs.realpathSync.native(p) } catch { retur
 const openFolder = (p) => shell.openPath(realPath(p))
 
 // terra://banner/<instanceId>/<fichier> sert les images de bannière des instances
-protocol.registerSchemesAsPrivileged([{ scheme: 'terra', privileges: { standard: true, secure: true, supportFetchAPI: true } }])
+protocol.registerSchemesAsPrivileged([{ scheme: 'terra', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }])
+
+// Fichiers de l'animation de suppression (papier froissé), servis depuis l'interface construite
+const ASSETS = new Set(['crumple/vertex_animation_textures1_mesh.fbx', 'crumple/vertex_animation_textures1_pos.exr'])
 
 let win
 
@@ -79,7 +83,7 @@ app.whenReady().then(() => {
     win.webContents.send('game:status', status)
     win.webContents.send('instances:changed')
     if (status.state === 'running' && settings.raw().minimizeOnLaunch) win.minimize()
-  })
+  }, (log) => win && !win.isDestroyed() && win.webContents.send('game:log', log))
 
   protocol.handle('terra', (req) => {
     const notFound = () => new Response(null, { status: 404 })
@@ -90,6 +94,17 @@ app.whenReady().then(() => {
       if (url.hostname === 'modicon') {
         const icon = store.modIcon(id, path.basename(file))
         return icon ? new Response(icon.data, { headers: { 'Content-Type': icon.type, 'Cache-Control': 'max-age=3600' } }) : notFound()
+      }
+      // terra://asset/crumple/<fichier> : liste fixe de fichiers de l'interface
+      if (url.hostname === 'asset') {
+        const rel = url.pathname.replace(/^\//, '')
+        if (!ASSETS.has(rel)) return notFound()
+        return net.fetch(pathToFileURL(path.join(path.dirname(APP_FILE), rel)).toString()).then((res) => new Response(res.body, { headers: { 'Content-Type': 'application/octet-stream', 'Access-Control-Allow-Origin': '*' } }))
+      }
+      // terra://world/<id>/<monde> : icône du monde (icon.png dans son dossier)
+      if (url.hostname === 'world') {
+        const icon = worlds.worldIcon(id, file)
+        return fs.existsSync(icon) ? net.fetch(pathToFileURL(icon).toString()) : notFound()
       }
       // terra://banner/<id>/<banner.x|logo.x> ou terra://shot/<id>/<capture>
       if (url.hostname !== 'shot' && !/^(banner|logo)\./.test(path.basename(file))) return notFound()
@@ -103,6 +118,13 @@ app.whenReady().then(() => {
   handle('window:minimize', () => win.minimize())
   handle('window:maximize', () => (win.isMaximized() ? win.unmaximize() : win.maximize()))
   handle('window:close', () => win.close())
+  // Capture d'une zone de la fenêtre (en pixels de l'interface) : sert de texture à l'animation de suppression
+  handle('window:capture', async (rect) => {
+    const n = (v) => Math.round(Number(v))
+    const r = { x: n(rect?.left), y: n(rect?.top), width: n(rect?.width), height: n(rect?.height) }
+    if (Object.values(r).some((v) => !Number.isFinite(v)) || r.width < 1 || r.height < 1 || r.width > 8000 || r.height > 8000) throw new Error('Zone refusée.')
+    return (await win.webContents.capturePage(r)).toDataURL()
+  })
 
   handle('meta:items', () => store.itemList())
 
@@ -133,8 +155,15 @@ app.whenReady().then(() => {
   handle('external:import', (item) => external.importInstance(item, notifyInstances))
 
   handle('instances:list', () => store.listInstances())
+  // Mods apportés par un profil : adaptés à la version et au chargeur de l'instance
+  const adaptProfileMods = (inst, items) => {
+    if (!Array.isArray(items) || !items.includes('mods') || inst.loader === 'vanilla') return
+    if (!fs.existsSync(path.join(store.gameDir(inst.id), 'mods'))) return
+    try { content.adaptModsTask(inst.id) } catch {}
+  }
   handle('instances:create', (data) => {
     const inst = store.createInstance(data)
+    if (inst.profileId) adaptProfileMods(inst, data.items)
     launcher.prepareInBackground(inst.id)
     return inst
   })
@@ -198,7 +227,52 @@ app.whenReady().then(() => {
   handle('instances:update', (id, changes) => store.editInstance(id, changes))
   handle('instances:delete', (id) => store.deleteInstance(id))
   handle('instances:openFolder', (id) => openFolder(store.gameDir(id)))
-  handle('instances:reapplyProfile', (id, profileId, items) => store.reapplyProfile(id, profileId, items))
+  handle('instances:reapplyProfile', (id, profileId, items) => {
+    const inst = store.reapplyProfile(id, profileId, items)
+    adaptProfileMods(inst, items)
+    return inst
+  })
+  handle('instances:openLogs', (id) => {
+    const dir = path.join(store.gameDir(id), 'logs')
+    fs.mkdirSync(dir, { recursive: true })
+    return openFolder(dir)
+  })
+
+  // Journal du jeu, mondes et sauvegardes
+  handle('game:log', (id) => launcher.readLog(id))
+  const notRunning = (id) => { if (launcher.isRunning(id)) throw new Error('Ferme d’abord Minecraft : le monde est en cours d’utilisation.') }
+  handle('worlds:list', (id) => worlds.list(id))
+  handle('worlds:backup', (id, name) => { notRunning(id); return worlds.backupWorld(id, name) })
+  handle('worlds:restore', (id, name, file) => { notRunning(id); return worlds.restoreBackup(id, name, file) })
+  handle('worlds:trash', (id, name) => { notRunning(id); return worlds.trashWorld(id, name) })
+  handle('worlds:trashBackup', (id, name, file) => worlds.trashBackup(id, name, file))
+  handle('worlds:openFolder', (id, name) => {
+    if (name == null) {
+      fs.mkdirSync(worlds.savesDir(id), { recursive: true })
+      return openFolder(worlds.savesDir(id))
+    }
+    return openFolder(worlds.worldDir(id, name))
+  })
+  // Sauvegarde faite avant un changement de version de Minecraft : supprimée (remove) ou gardée, une fois les mondes vérifiés
+  handle('worlds:resolvePending', async (id, remove) => {
+    const pending = store.listInstances().find((i) => i.id === id)?.pendingBackups
+    if (pending && remove === true) {
+      for (const f of pending.files || []) { try { await worlds.trashBackup(id, f.world, f.file) } catch {} }
+    }
+    const inst = store.updateInstance(id, { pendingBackups: null })
+    notifyInstances()
+    return inst
+  })
+  handle('worlds:openBackups', (id, name) => {
+    const dir = worlds.backupDir(id, name)
+    fs.mkdirSync(dir, { recursive: true })
+    return openFolder(dir)
+  })
+
+  // Modpacks et compatibilité des mods
+  handle('content:checkModpackUpdate', (id) => content.checkModpackUpdate(id))
+  handle('content:updateModpack', (id, versionId, opts) => content.updateModpack(id, versionId, { backup: opts?.backup === true }).id)
+  handle('content:adaptMods', (id) => content.adaptModsTask(id).id)
   handle('instances:saveToProfile', (id) => store.saveOptionsToProfile(id))
   // kind : 'banner' ou 'logo'
   handle('instances:pickImage', async (id, kind) => {

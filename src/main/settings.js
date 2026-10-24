@@ -15,6 +15,7 @@ const DEFAULTS = {
   jvmArgs: '',
   gpu: true,
   minimizeOnLaunch: true,
+  autoBackup: true,
   serverAddress: 'terranova.ist3rik.com'
 }
 
@@ -62,6 +63,7 @@ const EDITABLE = {
   jvmArgs: (v) => isString(2000)(v) && (checkJvmArgs(v), true),
   gpu: isBool,
   minimizeOnLaunch: isBool,
+  autoBackup: isBool,
   serverAddress: (v) => isString(255)(v) && /^([^\s-]\S*)?$/.test(v),
   curseforgeKey: isString(200)
 }

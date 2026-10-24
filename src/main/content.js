@@ -8,6 +8,7 @@ const AdmZip = require('adm-zip')
 const store = require('./store')
 const downloads = require('./downloads')
 const settings = require('./settings')
+const worlds = require('./worlds')
 const { insideDir, checkVersion } = require('./paths')
 
 const UA = 'TerraLauncher/0.1.0'
@@ -301,11 +302,14 @@ async function downloadTemp(task, url, name) {
   return dest
 }
 
-function extractOverrides(zip, folders, game) {
+// keep : fichiers du joueur à ne pas écraser s'ils existent déjà (mise à jour d'un modpack)
+function extractOverrides(zip, folders, game, keep = []) {
   for (const entry of zip.getEntries()) {
     const folder = folders.find((f) => entry.entryName.startsWith(f + '/'))
     if (!folder || entry.isDirectory) continue
-    const dest = insideDir(game, entry.entryName.slice(folder.length + 1))
+    const rel = entry.entryName.slice(folder.length + 1)
+    const dest = insideDir(game, rel)
+    if (keep.includes(rel) && fs.existsSync(dest)) continue
     fs.mkdirSync(path.dirname(dest), { recursive: true })
     fs.writeFileSync(dest, entry.getData())
   }
@@ -336,7 +340,11 @@ async function installModpack({ project, versionId, name, profileId, items }, da
       let warning = null
       if (project.platform === 'curseforge') warning = await installCurseforgePack(task, project, versionId, inst, game)
       else await installModrinthPack(task, project, versionId, inst, game)
-      if (profileId) store.reapplyProfile(inst.id, profileId, items)
+      if (profileId) {
+        store.reapplyProfile(inst.id, profileId, items)
+        // Mods du profil venus d'une autre version de Minecraft : remplacés par leur version pour ce modpack
+        if (items?.includes('mods')) warning = [warning, await adaptMods(inst.id, task)].filter(Boolean).join(' · ') || null
+      }
       store.updateInstance(inst.id, { installing: false, installError: null })
       require('./launcher').prepareInBackground(inst.id)
       task.detail = warning || 'Modpack installé'
@@ -367,46 +375,56 @@ function packFile(f, game) {
   return { url: urls[0], urls, dest: insideDir(game, f.path), sha1, size: f.fileSize }
 }
 
-async function installModrinthPack(task, project, versionId, inst, game) {
-  const version = versionId ? await mr(`/version/${versionId}`) : (await mr(`/project/${project.id}/version`))[0]
+// Lit une version de modpack Modrinth (.mrpack) : version du jeu, chargeur, fichiers à télécharger.
+// Renvoie aussi l'archive ouverte (pour les overrides) ; l'appelant supprime archivePath.
+async function readModrinthPack(task, version, game) {
   const file = version.files.find((f) => f.filename.endsWith('.mrpack')) || version.files[0]
   task.detail = 'Téléchargement du modpack…'
-  const archive = await downloadTemp(task, file.url, file.filename)
-  const zip = new AdmZip(archive)
+  const archivePath = await downloadTemp(task, file.url, file.filename)
+  const zip = new AdmZip(archivePath)
   const index = JSON.parse(zip.readAsText('modrinth.index.json'))
   const deps = index.dependencies || {}
   const loader = deps['fabric-loader'] ? 'fabric' : deps['quilt-loader'] ? 'quilt' : deps.neoforge ? 'neoforge' : deps.forge ? 'forge' : 'vanilla'
   const loaderVersion = deps['fabric-loader'] || deps['quilt-loader'] || deps.neoforge || deps.forge || null
   checkVersion(deps.minecraft, 'Version de Minecraft du modpack')
   if (loaderVersion) checkVersion(loaderVersion, 'Version du chargeur du modpack')
-  store.updateInstance(inst.id, { version: deps.minecraft, loader, loaderVersion })
-  notifyInstances()
-
-  const files = index.files
-    .filter((f) => f.env?.client !== 'unsupported')
-    .map((f) => packFile(f, game))
-  task.detail = `${files.length} mods et fichiers`
-  const failed = await downloads.downloadFiles(task, files)
-  extractOverrides(zip, ['overrides', 'client-overrides'], game)
-  fs.rmSync(archive, { force: true })
-  if (failed.length) throw new Error(`${failed.length} fichier(s) n’ont pas pu être téléchargés.`)
+  const entries = index.files.filter((f) => f.env?.client !== 'unsupported')
+  const overrides = ['overrides', 'client-overrides']
+  return {
+    archivePath, zip,
+    minecraft: deps.minecraft, loader, loaderVersion,
+    versionId: version.id, versionName: version.version_number || version.name,
+    files: entries.map((f) => packFile(f, game)),
+    paths: [...entries.map((f) => f.path.replace(/\\/g, '/')), ...overrideContent(zip, overrides)],
+    blocked: [],
+    overrides
+  }
 }
 
-async function installCurseforgePack(task, project, versionId, inst, game) {
-  const fileId = versionId || (await cf(`/mods/${project.id}/files?pageSize=1`)).data[0]?.id
-  const packFile = (await cf(`/mods/${project.id}/files/${fileId}`)).data
-  if (!packFile.downloadUrl) throw new Error('Ce modpack ne peut pas être téléchargé depuis un launcher tiers (choix de l’auteur).')
+// Mods et packs livrés dans les overrides : suivis comme les autres fichiers du modpack (retirés s'ils disparaissent)
+function overrideContent(zip, folders) {
+  const out = []
+  for (const entry of zip.getEntries()) {
+    if (entry.isDirectory) continue
+    const folder = folders.find((f) => entry.entryName.startsWith(f + '/'))
+    const rel = folder && entry.entryName.slice(folder.length + 1)
+    if (rel && /^(mods|resourcepacks|shaderpacks)\/[^/]+$/.test(rel)) out.push(rel)
+  }
+  return out
+}
+
+async function readCurseforgePack(task, projectId, fileId, game) {
+  const packInfo = (await cf(`/mods/${projectId}/files/${fileId}`)).data
+  if (!packInfo.downloadUrl) throw new Error('Ce modpack ne peut pas être téléchargé depuis un launcher tiers (choix de l’auteur).')
   task.detail = 'Téléchargement du modpack…'
-  const archive = await downloadTemp(task, packFile.downloadUrl, packFile.fileName)
-  const zip = new AdmZip(archive)
+  const archivePath = await downloadTemp(task, packInfo.downloadUrl, packInfo.fileName)
+  const zip = new AdmZip(archivePath)
   const manifest = JSON.parse(zip.readAsText('manifest.json'))
   const primary = manifest.minecraft.modLoaders.find((l) => l.primary) || manifest.minecraft.modLoaders[0]
   const [loaderName, ...rest] = (primary?.id || 'vanilla').split('-')
   const loaderVersion = rest.join('-') || null
   checkVersion(manifest.minecraft.version, 'Version de Minecraft du modpack')
   if (loaderVersion) checkVersion(loaderVersion, 'Version du chargeur du modpack')
-  store.updateInstance(inst.id, { version: manifest.minecraft.version, loader: LOADER_KEYS.includes(loaderName) ? loaderName : 'vanilla', loaderVersion })
-  notifyInstances()
 
   const wanted = manifest.files.filter((f) => f.required !== false)
   task.detail = `Résolution de ${wanted.length} mods…`
@@ -419,20 +437,161 @@ async function installCurseforgePack(task, project, versionId, inst, game) {
     modsInfo.push(...(await cf('/mods', { modIds: chunk.map((f) => f.projectID) })).data)
   }
   const classOf = Object.fromEntries(modsInfo.map((m) => [m.id, m.classId]))
-  const blocked = filesInfo.filter((f) => !f.downloadUrl)
-  const files = filesInfo
-    .filter((f) => f.downloadUrl)
-    .map((f) => ({ url: f.downloadUrl, dest: insideDir(game, `${CF_CLASS_DIR[classOf[f.modId]] || 'mods'}/${f.fileName}`), sha1: f.hashes?.find((h) => h.algo === 1)?.value, size: f.fileLength }))
-  task.detail = `${files.length} mods et fichiers`
-  const failed = await downloads.downloadFiles(task, files)
-  extractOverrides(zip, [manifest.overrides || 'overrides'], game)
-  fs.rmSync(archive, { force: true })
-  if (failed.length) throw new Error(`${failed.length} fichier(s) n’ont pas pu être téléchargés.`)
-  if (blocked.length) {
-    store.updateInstance(inst.id, { blockedFiles: blocked.map((f) => f.displayName) })
-    return `Installé · ${blocked.length} mod(s) à télécharger à la main (bloqués par leur auteur)`
+  const relOf = (f) => `${CF_CLASS_DIR[classOf[f.modId]] || 'mods'}/${path.basename(String(f.fileName))}`
+  return {
+    archivePath, zip,
+    minecraft: manifest.minecraft.version, loader: LOADER_KEYS.includes(loaderName) ? loaderName : 'vanilla', loaderVersion,
+    versionId: packInfo.id, versionName: packInfo.displayName,
+    files: filesInfo.filter((f) => f.downloadUrl).map((f) => ({ url: f.downloadUrl, dest: insideDir(game, relOf(f)), sha1: f.hashes?.find((h) => h.algo === 1)?.value, size: f.fileLength })),
+    paths: [...filesInfo.map(relOf), ...overrideContent(zip, [manifest.overrides || 'overrides'])],
+    blocked: filesInfo.filter((f) => !f.downloadUrl).map((f) => f.displayName),
+    overrides: [manifest.overrides || 'overrides']
   }
-  return null
+}
+
+const readPack = (task, platform, projectId, versionId, game) =>
+  platform === 'curseforge' ? readCurseforgePack(task, projectId, versionId, game) : mr(`/version/${versionId}`).then((v) => readModrinthPack(task, v, game))
+
+// Télécharge les fichiers d'un modpack lu par readPack, puis ses overrides ; renvoie l'avertissement éventuel
+async function installPackFiles(task, pack, inst, game, { keep = [] } = {}) {
+  task.detail = `${pack.files.length} mods et fichiers`
+  const failed = await downloads.downloadFiles(task, pack.files)
+  extractOverrides(pack.zip, pack.overrides, game, keep)
+  fs.rmSync(pack.archivePath, { force: true })
+  if (failed.length) throw new Error(`${failed.length} fichier(s) n’ont pas pu être téléchargés.`)
+  store.updateInstance(inst.id, { blockedFiles: pack.blocked.length ? pack.blocked : null })
+  return pack.blocked.length ? `${pack.blocked.length} mod(s) à télécharger à la main (bloqués par leur auteur)` : null
+}
+
+const packSource = (platform, projectId, pack) => ({ platform, projectId, versionId: pack.versionId, versionName: pack.versionName, packFiles: pack.paths })
+
+async function installModrinthPack(task, project, versionId, inst, game) {
+  const version = versionId ? await mr(`/version/${versionId}`) : (await mr(`/project/${project.id}/version`))[0]
+  const pack = await readModrinthPack(task, version, game)
+  store.updateInstance(inst.id, { version: pack.minecraft, loader: pack.loader, loaderVersion: pack.loaderVersion, source: packSource('modrinth', project.id, pack) })
+  notifyInstances()
+  await installPackFiles(task, pack, inst, game)
+}
+
+async function installCurseforgePack(task, project, versionId, inst, game) {
+  const fileId = versionId || (await cf(`/mods/${project.id}/files?pageSize=1`)).data[0]?.id
+  const pack = await readCurseforgePack(task, project.id, fileId, game)
+  store.updateInstance(inst.id, { version: pack.minecraft, loader: pack.loader, loaderVersion: pack.loaderVersion, source: packSource('curseforge', project.id, pack) })
+  notifyInstances()
+  const warning = await installPackFiles(task, pack, inst, game)
+  return warning ? `Installé · ${warning}` : null
+}
+
+// ---------- Mises à jour des modpacks ----------
+
+const instanceById = (id) => {
+  const inst = store.listInstances().find((i) => i.id === id)
+  if (!inst) throw new Error('Instance introuvable.')
+  return inst
+}
+
+// Réglage « Sauvegarder avant une mise à jour de mods » (Paramètres → Jeu)
+const autoBackupOn = () => settings.raw().autoBackup !== false
+
+// Les mods, mondes et fichiers du jeu sont verrouillés tant que Minecraft tourne
+function checkNotRunning(inst) {
+  if (require('./launcher').isRunning(inst.id)) throw new Error(`Ferme d’abord Minecraft (« ${inst.name} » est en cours d’exécution).`)
+}
+
+// Dernière version publiée du modpack d'une instance (stable de préférence)
+async function checkModpackUpdate(instanceId) {
+  const inst = instanceById(instanceId)
+  const src = inst.source
+  if (!src?.projectId) return null
+  let versions
+  if (src.platform === 'curseforge') {
+    const json = await cf(`/mods/${src.projectId}/files?pageSize=50`)
+    versions = json.data
+      .map((f) => ({ id: f.id, name: f.displayName, date: f.fileDate, release: f.releaseType === 1, gameVersions: releaseOnly(f.gameVersions) }))
+      .sort((a, b) => new Date(b.date) - new Date(a.date))
+  } else {
+    versions = (await mr(`/project/${src.projectId}/version`)).map((v) => ({ id: v.id, name: v.version_number || v.name, date: v.date_published, release: v.version_type === 'release', gameVersions: v.game_versions }))
+  }
+  const current = versions.find((v) => String(v.id) === String(src.versionId))
+  const latest = versions.find((v) => v.release) || versions[0]
+  const newer = latest && String(latest.id) !== String(src.versionId) &&
+    // Version installée inconnue (anciennes instances) : seule une version publiée après la création compte
+    new Date(latest.date) > new Date(current?.date || inst.createdAt)
+  return { current: src.versionName || current?.name || null, latest: newer ? latest : null }
+}
+
+// Met à jour le modpack : sauvegarde des mondes (si le joueur l'a choisi), retrait des fichiers de l'ancienne version,
+// installation de la nouvelle. options.txt et servers.dat déjà présents sont gardés (touches et serveurs du joueur).
+// Changement de version de Minecraft avec sauvegarde : l'archive est gardée à part (pendingBackups) jusqu'à ce que
+// le joueur ait vérifié ses mondes et choisisse de la supprimer ou de la garder.
+function updateModpack(instanceId, versionId, { backup = false } = {}) {
+  const inst = instanceById(instanceId)
+  const src = inst.source
+  if (!src?.projectId) throw new Error('Cette instance ne vient pas d’un modpack.')
+  const validId = src.platform === 'curseforge' ? Number.isInteger(versionId) && versionId > 0 : typeof versionId === 'string' && /^[A-Za-z0-9]{1,64}$/.test(versionId)
+  if (!validId) throw new Error('Version du modpack refusée.')
+  checkNotRunning(inst)
+  const game = store.gameDir(instanceId)
+  return downloads.start(`Mise à jour de « ${inst.name} »`, 'Préparation…', async (task) => {
+    downloads.notify(true)
+    store.updateInstance(inst.id, { installing: true })
+    notifyInstances()
+    try {
+      const pack = await readPack(task, src.platform, src.projectId, versionId, game)
+      const versionChange = pack.minecraft !== inst.version
+      let saved = []
+      if (backup === true) {
+        saved = await worlds.backupAll(inst.id, task, { kind: versionChange ? 'version' : 'auto' })
+        if (versionChange && saved.length) store.updateInstance(inst.id, { pendingBackups: { from: inst.version, to: pack.minecraft, at: Date.now(), files: saved } })
+      }
+
+      // Fichiers posés par la version actuelle (ou, pour une ancienne instance, relus dans son archive)
+      let oldPaths = src.packFiles
+      if (!oldPaths && src.versionId) {
+        task.detail = 'Lecture de la version installée…'
+        const old = await readPack(task, src.platform, src.projectId, src.versionId, game)
+        oldPaths = old.paths
+        fs.rmSync(old.archivePath, { force: true })
+      }
+
+      const next = new Set(pack.paths.map((p) => p.toLowerCase()))
+      if (oldPaths) {
+        for (const rel of oldPaths) {
+          if (next.has(rel.toLowerCase())) continue
+          let full
+          try { full = insideDir(game, rel) } catch { continue }
+          if (!fs.existsSync(full)) continue
+          try { await shell.trashItem(full) } catch { fs.rmSync(full, { force: true }) }
+        }
+      } else {
+        // Version installée introuvable : les mods actuels sont mis de côté dans les sauvegardes de l'instance
+        const mods = path.join(game, 'mods')
+        if (fs.existsSync(mods)) {
+          const aside = path.join(store.instanceDir(inst.id), 'backups', `mods-avant-mise-a-jour-${Date.now()}`)
+          fs.mkdirSync(path.dirname(aside), { recursive: true })
+          fs.renameSync(mods, aside)
+        }
+      }
+
+      const warning = await installPackFiles(task, pack, inst, game, { keep: ['options.txt', 'servers.dat'] })
+      const changed = pack.minecraft !== inst.version || pack.loader !== inst.loader || pack.loaderVersion !== inst.loaderVersion
+      store.updateInstance(inst.id, {
+        version: pack.minecraft, loader: pack.loader, loaderVersion: pack.loaderVersion,
+        ...(changed ? { preparedVersion: null } : {}),
+        source: packSource(src.platform, src.projectId, pack)
+      })
+      // Nouvelle version de Minecraft ou autre chargeur : les mods ajoutés à la main suivent
+      const adapted = pack.minecraft !== inst.version || pack.loader !== inst.loader ? await adaptMods(inst.id, task) : null
+      store.updateInstance(inst.id, { installing: false, installError: null })
+      require('./launcher').prepareInBackground(inst.id)
+      task.detail = [`Version ${pack.versionName}`, saved.length ? `${saved.length} monde${saved.length > 1 ? 's' : ''} sauvegardé${saved.length > 1 ? 's' : ''}` : null, warning, adapted].filter(Boolean).join(' · ')
+    } catch (err) {
+      store.updateInstance(inst.id, { installing: false })
+      throw err
+    } finally {
+      notifyInstances()
+    }
+  })
 }
 
 // ---------- Mises à jour des mods d'une instance ----------
@@ -474,6 +633,16 @@ function cfFingerprint(buf) {
 
 const modUpdates = new Map() // instanceId -> { fichier actuel -> mise à jour trouvée }
 
+// Lit les mods un par un sans bloquer l'application : { name, sha1, buf }
+async function readJars(dir, names) {
+  const out = []
+  for (const name of names) {
+    const buf = await fs.promises.readFile(path.join(dir, name))
+    out.push({ name, sha1: crypto.createHash('sha1').update(buf).digest('hex'), buf })
+  }
+  return out
+}
+
 async function checkModUpdates(instanceId) {
   const inst = store.listInstances().find((i) => i.id === instanceId)
   if (!inst || inst.loader === 'vanilla') return { updates: {}, icons: {} }
@@ -481,10 +650,7 @@ async function checkModUpdates(instanceId) {
   let names = []
   try { names = fs.readdirSync(dir).filter((n) => /\.jar(\.disabled)?$/i.test(n)) } catch { return { updates: {}, icons: {} } }
   const loaders = inst.loader === 'quilt' ? ['quilt', 'fabric'] : [inst.loader]
-  const mods = names.map((name) => {
-    const buf = fs.readFileSync(path.join(dir, name))
-    return { name, sha1: crypto.createHash('sha1').update(buf).digest('hex'), buf }
-  })
+  const mods = await readJars(dir, names)
   const found = {}
   const icons = {} // fichier -> logo du projet (pour les mods sans logo intégré)
 
@@ -549,11 +715,14 @@ async function checkModUpdates(instanceId) {
 function updateMods(instanceId, names) {
   const inst = store.listInstances().find((i) => i.id === instanceId)
   const updates = modUpdates.get(instanceId) || {}
-  const chosen = names.filter((n) => updates[n]?.url)
+  const chosen = (Array.isArray(names) ? names : []).filter((n) => updates[n]?.url)
   if (!inst || !chosen.length) throw new Error('Aucune mise à jour disponible pour ces mods.')
+  checkNotRunning(inst)
   const dir = path.join(store.gameDir(instanceId), 'mods')
   const title = chosen.length > 1 ? `Mise à jour de ${chosen.length} mods` : `Mise à jour de ${updates[chosen[0]].file}`
   return downloads.start(title, `« ${inst.name} »`, async (task) => {
+    if (autoBackupOn()) await worlds.backupAll(inst.id, task)
+    task.detail = `« ${inst.name} »`
     const files = chosen.map((name) => {
       const u = updates[name]
       return { name, url: u.url, sha1: u.sha1, size: u.size, dest: insideDir(dir, u.file + (name.endsWith('.disabled') ? '.disabled' : '')) }
@@ -570,4 +739,120 @@ function updateMods(instanceId, names) {
   })
 }
 
-module.exports = { search, filters, projectVersions, projectDetails, installToInstance, installModpack, onInstancesChanged, checkModUpdates, updateMods }
+// ---------- Mods d'une autre version de Minecraft ----------
+// Un profil peut apporter des mods pris dans une instance d'une autre version (ou d'un autre chargeur).
+// Chaque mod est reconnu par son empreinte, puis remplacé par sa version pour la version et le chargeur de l'instance.
+// Sans version compatible, il est désactivé (.disabled) plutôt que de faire planter le jeu.
+
+const trash = async (file) => { try { await shell.trashItem(file) } catch { fs.rmSync(file, { force: true }) } }
+
+async function adaptMods(instanceId, task) {
+  const inst = instanceById(instanceId)
+  if (inst.loader === 'vanilla') return null
+  const dir = path.join(store.gameDir(instanceId), 'mods')
+  // Les fichiers fournis par le modpack restent tels quels : son auteur les a choisis pour cette version
+  const managed = new Set((inst.source?.packFiles || []).filter((p) => p.startsWith('mods/')).map((p) => p.slice(5).toLowerCase()))
+  let jars = []
+  try { jars = fs.readdirSync(dir).filter((n) => /\.jar$/i.test(n)) } catch { return null }
+  if (!jars.some((n) => !managed.has(n.toLowerCase()))) return null
+  task.detail = `Vérification des mods pour Minecraft ${inst.version}…`
+  downloads.notify(true)
+
+  const loaders = instanceLoaders(inst)
+  // Tous les mods servent à savoir ce qui est déjà installé (dépendances) ; seuls ceux hors modpack sont adaptés
+  const all = await readJars(dir, jars)
+  const mods = all.filter((m) => !managed.has(m.name.toLowerCase()))
+  const replace = [] // { name, url, sha1, size, file }
+  const disable = []
+  const present = new Set() // projets Modrinth déjà là (pour les dépendances)
+  const newDeps = new Map() // projet requis par une nouvelle version -> version précise éventuelle
+
+  // Modrinth
+  const known = new Set()
+  try {
+    const current = await mrPost('/version_files', { hashes: all.map((m) => m.sha1), algorithm: 'sha1' })
+    const fits = (v) => v.game_versions.includes(inst.version) && v.loaders.some((l) => loaders.includes(l))
+    const outdated = mods.filter((m) => current[m.sha1] && !fits(current[m.sha1]))
+    for (const m of all) if (current[m.sha1]) { known.add(m.name); present.add(current[m.sha1].project_id) }
+    const latest = outdated.length ? await mrPost('/version_files/update', { hashes: outdated.map((m) => m.sha1), algorithm: 'sha1', loaders, game_versions: [inst.version] }) : {}
+    for (const m of outdated) {
+      const v = latest[m.sha1]
+      const file = v && (v.files.find((f) => f.primary) || v.files[0])
+      if (!file) { disable.push(m.name); continue }
+      replace.push({ name: m.name, url: file.url, sha1: file.hashes.sha1, size: file.size, file: file.filename })
+      for (const dep of v.dependencies || []) if (dep.dependency_type === 'required' && dep.project_id) newDeps.set(dep.project_id, dep.version_id || null)
+    }
+  } catch {}
+
+  // CurseForge, pour les fichiers que Modrinth ne connaît pas
+  const rest = mods.filter((m) => !known.has(m.name))
+  let unchecked = rest.length
+  if (rest.length && settings.curseforgeKey()) {
+    try {
+      const prints = new Map(rest.map((m) => [cfFingerprint(m.buf), m]))
+      const res = await cf('/fingerprints/432', { fingerprints: [...prints.keys()] })
+      const params = new URLSearchParams({ gameVersion: inst.version, pageSize: '1' })
+      if (CF_LOADER[inst.loader]) params.set('modLoaderType', String(CF_LOADER[inst.loader]))
+      await Promise.all((res.data?.exactMatches || []).map(async (match) => {
+        const m = prints.get(match.file.fileFingerprint)
+        if (!m) return
+        unchecked--
+        const tags = (match.file.gameVersions || []).map((g) => g.toLowerCase())
+        if (tags.includes(inst.version) && loaders.some((l) => tags.includes(l))) return
+        const next = (await cf(`/mods/${match.id}/files?${params}`)).data?.[0]
+        if (!next?.downloadUrl) { disable.push(m.name); return }
+        replace.push({ name: m.name, url: next.downloadUrl, sha1: next.hashes?.find((h) => h.algo === 1)?.value || null, size: next.fileLength, file: path.basename(next.fileName) })
+      }))
+    } catch {}
+  }
+
+  // Dépendances nouvelles exigées par les versions choisies
+  const depFiles = []
+  const seen = new Set(present)
+  for (const [projectId, versionId] of newDeps) {
+    if (present.has(projectId)) continue
+    try { depFiles.push(...(await resolveModrinth(projectId, 'mod', inst, seen, versionId)).filter((i) => i.url)) } catch {}
+  }
+
+  if (replace.length || depFiles.length) {
+    task.detail = `Adaptation de ${replace.length} mod${replace.length > 1 ? 's' : ''} à Minecraft ${inst.version}…`
+    const files = [
+      ...replace.map((r) => ({ name: r.name, url: r.url, sha1: r.sha1, size: r.size, dest: insideDir(dir, r.file) })),
+      ...depFiles.map((d) => ({ url: d.url, sha1: d.sha1, size: d.size, dest: insideDir(dir, d.name) }))
+    ]
+    const failed = new Set((await downloads.downloadFiles(task, files)).map((f) => f.dest))
+    for (const f of files.filter((x) => x.name)) {
+      if (failed.has(f.dest)) { disable.push(f.name); continue }
+      if (path.basename(f.dest).toLowerCase() !== f.name.toLowerCase()) await trash(path.join(dir, f.name))
+    }
+  }
+  for (const name of disable) {
+    const from = path.join(dir, name)
+    if (fs.existsSync(from)) fs.renameSync(from, `${from}.disabled`)
+  }
+
+  const done = replace.length - disable.filter((n) => replace.some((r) => r.name === n)).length
+  const parts = []
+  if (done > 0) parts.push(`${done} mod${done > 1 ? 's' : ''} adapté${done > 1 ? 's' : ''} à Minecraft ${inst.version}`)
+  if (depFiles.length) parts.push(`${depFiles.length} dépendance${depFiles.length > 1 ? 's' : ''} ajoutée${depFiles.length > 1 ? 's' : ''}`)
+  if (disable.length) parts.push(`${disable.length} désactivé${disable.length > 1 ? 's' : ''} (pas de version pour ${inst.version}) : ${disable.slice(0, 3).join(', ')}${disable.length > 3 ? '…' : ''}`)
+  if (unchecked > 0) parts.push(`${unchecked} non vérifié${unchecked > 1 ? 's' : ''} (inconnu${unchecked > 1 ? 's' : ''} de Modrinth et CurseForge)`)
+  return parts.join(' · ') || 'Tous les mods sont déjà compatibles'
+}
+
+// Adaptation lancée seule (après l'application d'un profil, ou à la demande depuis l'onglet Mods)
+function adaptModsTask(instanceId) {
+  const inst = instanceById(instanceId)
+  if (inst.loader === 'vanilla') throw new Error('Cette instance n’a pas de chargeur de mods.')
+  checkNotRunning(inst)
+  return downloads.start(`Mods de « ${inst.name} »`, 'Vérification de la compatibilité…', async (task) => {
+    if (autoBackupOn()) await worlds.backupAll(inst.id, task)
+    task.detail = await adaptMods(instanceId, task) || 'Aucun mod à vérifier'
+    notifyInstances()
+  })
+}
+
+module.exports = {
+  search, filters, projectVersions, projectDetails, installToInstance, installModpack, onInstancesChanged,
+  checkModUpdates, updateMods, checkModpackUpdate, updateModpack, adaptModsTask
+}

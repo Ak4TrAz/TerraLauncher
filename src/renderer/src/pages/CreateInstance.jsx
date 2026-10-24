@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react'
-import { ChevronLeft, Loader2, Box as BoxIcon } from 'lucide-react'
+import { ChevronLeft, Loader2, Box as BoxIcon, PackagePlus } from 'lucide-react'
 import Banner, { FOX_BANNER } from '../components/Banner'
 import ProfileImportField from '../components/ProfileImportField'
-import { GrassBlock, CubesIcon, Select } from '../components/ui'
+import { MinecraftIcon, Select } from '../components/ui'
 import { LOADERS, OFF_BY_DEFAULT, fetchVersions } from '../api'
 
 const LOADER_INFO = {
@@ -62,7 +62,7 @@ export default function CreateInstance({ profiles, itemDefs, onCancel, onCreate,
       </button>
 
       <div className="flex items-center gap-6">
-        <CubesIcon />
+        <PackagePlus className="h-14 w-14 shrink-0 text-ember-500" strokeWidth={2.25} />
         <h1 className="flex-1 text-3xl font-extrabold xl:text-[38px] tracking-tight">Créer une instance</h1>
         <Stepper />
       </div>
@@ -114,7 +114,7 @@ export default function CreateInstance({ profiles, itemDefs, onCancel, onCreate,
             <Banner scene={FOX_BANNER} />
           </div>
           <div className="mt-5 flex items-center gap-4 border-b border-bark-700 pb-5">
-            <GrassBlock className="h-12 w-12" />
+            <MinecraftIcon className="h-12 w-12" />
             <div className="min-w-0">
               <div className="truncate text-2xl font-bold">{name.trim() || 'Mon aventure'}</div>
               <div className="text-cream-muted">Minecraft {version || '…'} · {loaderLabel}</div>

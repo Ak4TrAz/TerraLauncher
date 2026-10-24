@@ -1,8 +1,52 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { X, Check, ChevronDown } from 'lucide-react'
+import { X, Check, ChevronDown, Pencil } from 'lucide-react'
+import { IconBrandMinecraft } from '@tabler/icons-react'
 import { LOADERS } from '../api'
+
+// Nom modifiable sur place : le crayon ouvre un champ ; Entrée ou clic ailleurs enregistre, Échap annule.
+// onOpen : clic sur le nom (ouvrir la fiche), facultatif.
+export function EditableName({ name, onSave, onOpen, as: Tag = 'h2', className = '', wrapperClassName = '', icon = 'h-4 w-4' }) {
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState(name)
+  useEffect(() => { if (!editing) setValue(name) }, [name, editing])
+  const commit = () => {
+    setEditing(false)
+    const v = value.trim()
+    if (v && v !== name) onSave(v)
+  }
+  if (editing) {
+    return (
+      <div className={wrapperClassName}>
+        <input
+          autoFocus
+          value={value}
+          maxLength={40}
+          onChange={(e) => setValue(e.target.value)}
+          onFocus={(e) => e.target.select()}
+          onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setValue(name); setEditing(false) } }}
+          onBlur={commit}
+          onClick={(e) => e.stopPropagation()}
+          className={`w-full min-w-0 rounded-lg border border-ember-500/70 bg-black/45 px-2 outline-none ${className}`}
+        />
+      </div>
+    )
+  }
+  return (
+    <div className={`flex min-w-0 items-center gap-1.5 ${wrapperClassName}`}>
+      <Tag className={`min-w-0 truncate ${onOpen ? 'cursor-pointer hover:underline' : ''} ${className}`} onClick={onOpen}>{name}</Tag>
+      <button
+        type="button"
+        title="Renommer"
+        onClick={(e) => { e.stopPropagation(); setEditing(true) }}
+        className="shrink-0 rounded-lg bg-black/30 p-1.5 text-white/80 backdrop-blur-sm transition hover:bg-black/55 hover:text-white"
+      >
+        <Pencil className={icon} />
+      </button>
+    </div>
+  )
+}
 
 // Liste déroulante aux couleurs du launcher, qui s'ouvre vers le bas.
 // options : [{ value, label, hint? }]
@@ -218,7 +262,7 @@ export function Menu({ items, children }) {
 export function VersionChip({ version }) {
   return (
     <span className="chip">
-      <GrassBlock /> Minecraft Java {version}
+      <MinecraftIcon /> Minecraft Java {version}
     </span>
   )
 }
@@ -241,28 +285,9 @@ export function ProfileChip({ profile }) {
   )
 }
 
-export function GrassBlock({ className = 'h-4 w-4' }) {
-  return (
-    <svg viewBox="0 0 8 8" className={`pixel ${className}`}>
-      <rect width="8" height="8" fill="#7a5230" />
-      <rect width="8" height="3" fill="#5dbb46" />
-      <rect x="1" y="3" width="1" height="1" fill="#5dbb46" />
-      <rect x="4" y="3" width="1" height="2" fill="#5dbb46" />
-      <rect x="6" y="3" width="1" height="1" fill="#5dbb46" />
-      <rect x="2" y="5" width="1" height="1" fill="#5e3c22" />
-      <rect x="5" y="6" width="1" height="1" fill="#5e3c22" />
-    </svg>
-  )
-}
-
-export function CubesIcon({ className = 'h-12 w-12' }) {
-  return (
-    <svg viewBox="0 0 16 14" className={`pixel shrink-0 ${className}`} aria-hidden>
-      <rect x="4" y="0" width="8" height="6" fill="#f08a24" /><rect x="4" y="0" width="8" height="2" fill="#ffae6e" />
-      <rect x="0" y="7" width="7" height="7" fill="#e06a1a" /><rect x="0" y="7" width="7" height="2" fill="#f27a29" />
-      <rect x="9" y="7" width="7" height="7" fill="#e06a1a" /><rect x="9" y="7" width="7" height="2" fill="#f27a29" />
-    </svg>
-  )
+// Icône Minecraft de Tabler Icons (tabler.io/icons, brand-minecraft)
+export function MinecraftIcon({ className = 'h-4 w-4' }) {
+  return <IconBrandMinecraft className={`shrink-0 text-[#5dbb46] ${className}`} stroke={2} aria-hidden />
 }
 
 export function ProfileAvatar({ profile, size = 'h-12 w-12 text-xl' }) {
@@ -273,7 +298,8 @@ export function ProfileAvatar({ profile, size = 'h-12 w-12 text-xl' }) {
   )
 }
 
-// Tête du joueur découpée dans son vrai skin (visage + calque du chapeau), sans passer par un cache externe
+// Tête du joueur découpée dans son vrai skin (visage + calque du chapeau), sans passer par un cache externe.
+// size : de préférence un multiple de 8, pour des pixels nets.
 export function SkinHead({ account, size, className = '' }) {
   if (!account.skin) return <img src={`https://mc-heads.net/avatar/${account.uuid}/${size * 2}`} className={`pixel ${className}`} style={{ width: size, height: size }} alt="" />
   const layer = (x) => ({

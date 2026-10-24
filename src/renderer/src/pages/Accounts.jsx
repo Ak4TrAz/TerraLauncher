@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
-import { Plus, Check, Play, LogOut, Loader2, ArrowLeft, KeyRound, AlertTriangle } from 'lucide-react'
+import { Plus, Check, Play, LogOut, Loader2, ArrowLeft, KeyRound, AlertTriangle, UsersRound } from 'lucide-react'
 import { api } from '../api'
-import { CubesIcon, GrassBlock, SkinHead } from '../components/ui'
+import { MinecraftIcon, SkinHead } from '../components/ui'
 import { Fox, Leaf } from '../components/Sprites'
 
 function MicrosoftLogo({ className = 'h-5 w-5' }) {
@@ -16,12 +16,12 @@ function MicrosoftLogo({ className = 'h-5 w-5' }) {
 function AccountCard({ acc, onUse, onRemove }) {
   return (
     <div className={`flex items-center gap-6 rounded-tl-lg border p-6 ${acc.active ? 'border-ember-500 bg-gradient-to-br from-ember-500/15 to-transparent' : 'border-bark-700 bg-bark-850/85'}`}>
-      <SkinHead account={acc} size={112} className="rounded-full bg-bark-800 ring-4 ring-bark-600" />
+      <SkinHead account={acc} size={112} className="rounded-2xl bg-bark-800 ring-4 ring-bark-600" />
       <div className="flex-1 space-y-2">
         <div className="text-3xl font-bold">{acc.name}</div>
         {acc.active && <span className="inline-flex items-center gap-1.5 rounded-full bg-[#1f5a2a] px-3 py-1 text-sm font-semibold text-[#9be3a8]"><Check className="h-4 w-4" /> Compte actif</span>}
         <div className="flex items-center gap-2 text-cream-muted"><MicrosoftLogo /> Compte Microsoft</div>
-        <div className="flex items-center gap-2 text-cream-muted"><GrassBlock className="h-5 w-5" /> Minecraft Java</div>
+        <div className="flex items-center gap-2 text-cream-muted"><MinecraftIcon className="h-5 w-5" /> Minecraft Java</div>
       </div>
       <div className="flex w-56 flex-col gap-3 border-l border-bark-700 pl-6">
         <button className="btn-primary py-3" disabled={acc.active} onClick={() => onUse(acc)}><Play className="h-4 w-4 fill-white" /> Utiliser ce compte</button>
@@ -53,7 +53,7 @@ export default function Accounts({ accounts, setAccounts, settings, onBack, onOp
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-5">
-        <CubesIcon className="h-14 w-14" />
+        <UsersRound className="h-14 w-14 shrink-0 text-ember-500" strokeWidth={2.25} />
         <div>
           <h1 className="text-3xl font-extrabold xl:text-[38px] leading-tight tracking-tight">Vos comptes</h1>
           <p className="text-[17px] text-cream-muted">Choisissez le compte utilisé pour lancer Minecraft.</p>

@@ -3,6 +3,9 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Download, Check, AlertTriangle } from 'lucide-react'
 import { api } from '../api'
 
+// Progression d'une tâche (0 à 1), calculée par le launcher ; null tant que la taille totale est inconnue
+const progressOf = (t) => (t.status === 'done' ? 1 : t.progress ?? (t.total ? Math.min(1, t.received / t.total) : null))
+
 const fmt = (b) => (b >= 1e9 ? `${(b / 1e9).toFixed(1)} Go` : b >= 1e6 ? `${(b / 1e6).toFixed(1)} Mo` : `${Math.round(b / 1e3)} Ko`)
 
 // Icône de téléchargements dans l'en-tête, avec anneau de progression et liste en temps réel.
@@ -24,9 +27,16 @@ export default function DownloadsButton() {
   }, [open])
 
   const running = tasks.filter((t) => t.status === 'running')
-  const total = running.reduce((s, t) => s + (t.total || 0), 0)
-  const received = running.reduce((s, t) => s + t.received, 0)
-  const progress = total ? received / total : 0
+  // Rond : progression des tâches en cours, pondérée par leur taille. Il ne recule pas tant que ce sont
+  // les mêmes tâches ; tant qu'aucune taille n'est connue, un arc tourne à la place.
+  const known = running.filter((t) => progressOf(t) !== null && t.total > 0)
+  const weight = known.reduce((s, t) => s + t.total, 0)
+  const raw = weight ? known.reduce((s, t) => s + progressOf(t) * t.total, 0) / weight : null
+  const kept = useRef({ key: '', value: 0 })
+  const key = running.map((t) => t.id).join(',')
+  if (kept.current.key !== key) kept.current = { key, value: 0 }
+  if (raw !== null) kept.current.value = Math.max(kept.current.value, raw)
+  const progress = raw === null ? null : kept.current.value
   const R = 19
   const C = 2 * Math.PI * R
 
@@ -34,9 +44,11 @@ export default function DownloadsButton() {
     <div className="no-drag relative" ref={ref}>
       <button onClick={() => setOpen((o) => !o)} title="Téléchargements" className={`relative flex h-11 w-11 items-center justify-center rounded-xl transition hover:bg-white/5 ${open ? 'bg-white/5' : ''}`}>
         {running.length > 0 && (
-          <svg className="absolute inset-0 -rotate-90" viewBox="0 0 44 44">
+          <svg className={`absolute inset-0 -rotate-90 ${progress === null ? 'animate-spin [animation-duration:1.2s]' : ''}`} viewBox="0 0 44 44">
             <circle cx="22" cy="22" r={R} fill="none" stroke="#49382b" strokeWidth="3" />
-            <circle cx="22" cy="22" r={R} fill="none" stroke="#e46b1a" strokeWidth="3" strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C * (1 - progress)} className="transition-[stroke-dashoffset] duration-200" />
+            {progress === null
+              ? <circle cx="22" cy="22" r={R} fill="none" stroke="#e46b1a" strokeWidth="3" strokeLinecap="round" strokeDasharray={`${C * 0.2} ${C}`} />
+              : <circle cx="22" cy="22" r={R} fill="none" stroke="#e46b1a" strokeWidth="3" strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C * (1 - progress)} className="transition-[stroke-dashoffset] duration-200" />}
           </svg>
         )}
         <Download className={`h-5 w-5 ${running.length ? 'text-ember-400' : 'text-cream/75'}`} />
@@ -55,18 +67,23 @@ export default function DownloadsButton() {
             <div className="max-h-[360px] overflow-y-auto p-2">
               {tasks.length === 0 && <p className="px-3 py-6 text-center text-sm text-cream-muted">Aucun téléchargement en cours.</p>}
               {tasks.map((t) => {
-                const pct = t.total ? Math.min(100, (t.received / t.total) * 100) : 0
+                const p = progressOf(t)
+                const pct = p === null ? 0 : p * 100
                 return (
                   <div key={t.id} className="rounded-tl px-3 py-2.5 hover:bg-bark-800/50">
                     <div className="mb-1.5 flex items-center gap-2">
                       {t.status === 'done' && <Check className="h-4 w-4 text-[#63bd73]" />}
                       {t.status === 'error' && <AlertTriangle className="h-4 w-4 text-[#df7164]" />}
                       <span className="flex-1 truncate text-sm font-semibold">{t.title}</span>
-                      <span className="text-xs text-cream-muted">{t.status === 'running' ? `${Math.round(pct)} %` : t.status === 'done' ? 'Terminé' : 'Échec'}</span>
+                      <span className="text-xs text-cream-muted">{t.status === 'running' ? (p === null ? '…' : `${Math.floor(pct)} %`) : t.status === 'done' ? 'Terminé' : 'Échec'}</span>
                     </div>
-                    <div className="h-1.5 overflow-hidden rounded-full bg-bark-700">
-                      <div className={`h-full rounded-full transition-[width] duration-200 ${t.status === 'error' ? 'bg-[#df7164]' : t.status === 'done' ? 'bg-[#63bd73]' : 'bg-ember-500'}`} style={{ width: `${t.status === 'done' ? 100 : pct}%` }} />
-                    </div>
+                    {t.status === 'running' && p === null ? (
+                      <div className="working-bar h-1.5 rounded-full bg-bark-700" />
+                    ) : (
+                      <div className="h-1.5 overflow-hidden rounded-full bg-bark-700">
+                        <div className={`h-full rounded-full transition-[width] duration-200 ${t.status === 'error' ? 'bg-[#df7164]' : t.status === 'done' ? 'bg-[#63bd73]' : 'working-shine bg-ember-500'}`} style={{ width: `${t.status === 'done' ? 100 : Math.max(pct, 2)}%` }} />
+                      </div>
+                    )}
                     <div className="mt-1.5 flex justify-between text-[11px] text-cream-muted/80">
                       <span className="truncate">{t.error || t.detail}</span>
                       {t.status === 'running' && t.total > 0 && <span>{fmt(t.received)} / {fmt(t.total)}{t.speed ? ` · ${fmt(t.speed)}/s` : ''}</span>}

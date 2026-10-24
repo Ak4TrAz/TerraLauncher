@@ -20,6 +20,7 @@ import { SkinHead } from './components/ui'
 import ProfileModal from './components/ProfileModal'
 import ReapplyModal from './components/ReapplyModal'
 import ConfirmModal from './components/ConfirmModal'
+import DeleteInstanceDialog from './components/DeleteInstanceDialog'
 import CrashModal from './components/CrashModal'
 
 const TABS = [
@@ -63,7 +64,7 @@ function AccountChip({ accounts, onSwitch, onManage }) {
   return (
     <div className="no-drag relative" ref={ref}>
       <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-3 rounded-xl px-2 py-1.5 transition hover:bg-white/5">
-        <SkinHead account={active} size={40} className="rounded-full bg-bark-800 ring-2 ring-bark-600" />
+        <SkinHead account={active} size={40} className="rounded-lg bg-bark-800 ring-2 ring-bark-600" />
         <span className="max-w-[140px] truncate text-[17px] font-medium">{active.name}</span>
         <ChevronDown className={`h-4 w-4 text-cream-muted transition ${open ? 'rotate-180' : ''}`} />
       </button>
@@ -72,7 +73,7 @@ function AccountChip({ accounts, onSwitch, onManage }) {
           <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.12 }} className="absolute right-0 top-full z-50 mt-2 w-72 overflow-hidden rounded-tl-lg border border-bark-700 bg-bark-850 p-1.5 shadow-[0_20px_50px_-10px_rgba(0,0,0,0.85)]">
             {accounts.map((a) => (
               <button key={a.uuid} onClick={() => { onSwitch(a.uuid); setOpen(false) }} className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-bark-700/70">
-                <SkinHead account={a} size={28} className="rounded-md" />
+                <SkinHead account={a} size={32} className="rounded-md" />
                 <span className="flex-1 font-medium">{a.name}</span>
                 {a.active && <Check className="h-4 w-4 text-ember-400" />}
               </button>
@@ -135,6 +136,7 @@ export default function App() {
   const [profileModal, setProfileModal] = useState(null) // { profile } | null
   const [reapplying, setReapplying] = useState(null)
   const [confirm, setConfirm] = useState(null)
+  const [deleting, setDeleting] = useState(null) // instance dont la suppression est proposée
   const [toasts, setToasts] = useState([])
   const [gameStatus, setGameStatus] = useState({}) // instanceId -> { state, ... }
   const [crash, setCrash] = useState(null)
@@ -214,13 +216,19 @@ export default function App() {
     resetImages: run(async (inst) => { await api.instances.resetImage(inst.id, 'logo'); await api.instances.resetImage(inst.id, 'banner') }, 'Images par défaut rétablies.'),
     reapply: (inst) => (profiles.length ? setReapplying(inst) : toast("Crée d'abord un profil dans l'onglet Profils.")),
     saveToProfile: run((inst) => api.instances.saveToProfile(inst.id), 'Touches et réglages enregistrés dans le profil.'),
-    remove: (inst) =>
-      setConfirm({
-        title: 'Supprimer l’instance',
-        message: `« ${inst.name} » et tout son dossier (mondes, mods, captures) seront supprimés. Les shaders et packs partagés du profil ne sont pas touchés.`,
-        action: 'Supprimer',
-        onConfirm: run(() => api.instances.remove(inst.id), 'Instance supprimée.')
-      })
+    remove: (inst) => setDeleting(inst)
+  }
+
+  // Suppression confirmée dans la fenêtre au premier plan ; la bibliothèque se met à jour pendant le froissement
+  const deleteInstance = async (inst) => {
+    try {
+      await api.instances.remove(inst.id)
+      if (tab === 'instance') setTab('library')
+      await refresh()
+      toast(`« ${inst.name} » supprimée.`, 'success')
+    } catch (err) {
+      toast(err.message, 'error')
+    }
   }
 
   const profileActions = {
@@ -295,6 +303,9 @@ export default function App() {
       <ProfileModal open={!!profileModal} profile={profileModal?.profile} onClose={() => setProfileModal(null)} onSave={saveProfile} />
       <ReapplyModal instance={reapplying} onClose={() => setReapplying(null)} onApply={reapply} profiles={profiles} itemDefs={itemDefs} />
       <ConfirmModal confirm={confirm} onClose={() => setConfirm(null)} />
+      <AnimatePresence>
+        {deleting && <DeleteInstanceDialog key={deleting.id} inst={deleting} onCancel={() => setDeleting(null)} onDelete={() => deleteInstance(deleting)} onDone={() => setDeleting(null)} />}
+      </AnimatePresence>
       <CrashModal crash={crash} instance={instances.find((i) => i.id === crash?.instanceId)} onClose={() => setCrash(null)} />
 
       <div className="pointer-events-none fixed bottom-6 left-1/2 z-[60] flex -translate-x-1/2 flex-col items-center gap-2">
