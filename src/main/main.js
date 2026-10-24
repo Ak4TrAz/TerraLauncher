@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net } = require('electron')
 const path = require('path')
 const fs = require('fs')
-const { pathToFileURL } = require('url')
+const { pathToFileURL, fileURLToPath } = require('url')
 const store = require('./store')
 const downloads = require('./downloads')
 const settings = require('./settings')
@@ -14,6 +14,17 @@ const { autoUpdater } = require('electron-updater')
 const isDev = process.env.VITE_DEV === '1'
 const dataRoot = path.join(app.getPath('appData'), '.terralauncher')
 const defaultMinecraftDir = path.join(app.getPath('appData'), '.minecraft')
+
+// Seule page autorisée dans la fenêtre : l'interface du launcher
+const DEV_ORIGIN = 'http://localhost:5173'
+const APP_FILE = path.join(__dirname, '../../dist/index.html')
+function isAppUrl(url) {
+  try {
+    const u = new URL(url)
+    if (isDev) return u.origin === DEV_ORIGIN
+    return u.protocol === 'file:' && path.resolve(fileURLToPath(u)).toLowerCase() === path.resolve(APP_FILE).toLowerCase()
+  } catch { return false }
+}
 
 // L'Explorateur ne voit pas les dossiers redirigés (application empaquetée) : on lui passe le chemin réel
 const realPath = (p) => { try { return fs.realpathSync.native(p) } catch { return p } }
@@ -33,15 +44,25 @@ function createWindow() {
     frame: false,
     backgroundColor: '#140e0a',
     icon: path.join(__dirname, isDev || !app.isPackaged ? '../renderer/public/icon.png' : '../../dist/icon.png'),
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true }
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true }
   })
-  if (isDev) win.loadURL('http://localhost:5173')
-  else win.loadFile(path.join(__dirname, '../../dist/index.html'))
+  // La fenêtre ne quitte jamais l'interface ; les liens https s'ouvrent dans le navigateur
+  const guard = (e, url) => { if (!isAppUrl(e.url || url)) e.preventDefault() }
+  win.webContents.on('will-navigate', guard)
+  win.webContents.on('will-redirect', guard)
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https:\/\//i.test(url)) shell.openExternal(url)
+    return { action: 'deny' }
+  })
+  if (isDev) win.loadURL(DEV_ORIGIN)
+  else win.loadFile(APP_FILE)
 }
 
-// Enregistre un handler IPC qui renvoie { ok, data } ou { ok:false, error }
+// Enregistre un handler IPC qui renvoie { ok, data } ou { ok:false, error }.
+// Seule la page du launcher peut appeler.
 function handle(channel, fn) {
-  ipcMain.handle(channel, async (_e, ...args) => {
+  ipcMain.handle(channel, async (e, ...args) => {
+    if (!isAppUrl(e.senderFrame?.url)) return { ok: false, error: 'Appel refusé' }
     try { return { ok: true, data: await fn(...args) } } catch (err) { return { ok: false, error: err.message } }
   })
 }
@@ -61,20 +82,22 @@ app.whenReady().then(() => {
   })
 
   protocol.handle('terra', (req) => {
-    const url = new URL(req.url)
-    const [id, file] = url.pathname.split('/').filter(Boolean).map(decodeURIComponent)
-    // terra://modicon/<id>/<fichier du mod> : logo lu dans le .jar
-    if (url.hostname === 'modicon') {
-      try {
+    const notFound = () => new Response(null, { status: 404 })
+    try {
+      const url = new URL(req.url)
+      const [id, file] = url.pathname.split('/').filter(Boolean).map(decodeURIComponent)
+      // terra://modicon/<id>/<fichier du mod> : logo lu dans le .jar
+      if (url.hostname === 'modicon') {
         const icon = store.modIcon(id, path.basename(file))
-        if (icon) return new Response(icon.data, { headers: { 'Content-Type': icon.type, 'Cache-Control': 'max-age=3600' } })
-      } catch {}
-      return new Response(null, { status: 404 })
+        return icon ? new Response(icon.data, { headers: { 'Content-Type': icon.type, 'Cache-Control': 'max-age=3600' } }) : notFound()
+      }
+      // terra://banner/<id>/<banner.x|logo.x> ou terra://shot/<id>/<capture>
+      if (url.hostname !== 'shot' && !/^(banner|logo)\./.test(path.basename(file))) return notFound()
+      const target = url.hostname === 'shot' ? store.folderPath(id, 'screenshots', path.basename(file)) : path.join(store.instanceDir(id), path.basename(file))
+      return net.fetch(pathToFileURL(target).toString())
+    } catch {
+      return notFound() // identifiant ou fichier refusé
     }
-    // terra://banner/<id>/<banner.x|logo.x> ou terra://shot/<id>/<capture>
-    if (url.hostname !== 'shot' && !/^(banner|logo)\./.test(path.basename(file))) return new Response(null, { status: 404 })
-    const target = url.hostname === 'shot' ? store.folderPath(id, 'screenshots', path.basename(file)) : path.join(store.instanceDir(id), path.basename(file))
-    return net.fetch(pathToFileURL(target).toString())
   })
 
   handle('window:minimize', () => win.minimize())
@@ -155,7 +178,7 @@ app.whenReady().then(() => {
   handle('instances:toggleMod', (id, name) => store.toggleMod(id, name))
   handle('instances:trashFile', (id, folder, name) => shell.trashItem(store.folderPath(id, folder, name)))
   handle('instances:openSubfolder', (id, folder) => {
-    const dir = path.join(store.gameDir(id), folder)
+    const dir = store.subfolderDir(id, folder)
     fs.mkdirSync(dir, { recursive: true })
     return openFolder(dir)
   })
@@ -172,7 +195,7 @@ app.whenReady().then(() => {
     shell.showItemInFolder(realPath(res.filePath))
     return res.filePath
   })
-  handle('instances:update', (id, changes) => store.updateInstance(id, changes))
+  handle('instances:update', (id, changes) => store.editInstance(id, changes))
   handle('instances:delete', (id) => store.deleteInstance(id))
   handle('instances:openFolder', (id) => openFolder(store.gameDir(id)))
   handle('instances:reapplyProfile', (id, profileId, items) => store.reapplyProfile(id, profileId, items))
