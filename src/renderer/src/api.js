@@ -117,6 +117,9 @@ function createMock() {
       install: async (project) => { fakeDownload(project.title); return null },
       checkModUpdates: async () => ({ updates: {}, icons: {} }),
       updateMods: desktopOnly,
+      checkModpackUpdate: async () => ({ current: '1.4.0', latest: { id: 'abc123', name: '1.5.0', date: new Date().toISOString(), gameVersions: ['1.21.1'] } }),
+      updateModpack: desktopOnly,
+      adaptMods: desktopOnly,
       installModpack: async ({ project, name }) => {
         const inst = { id: id(), name: name || project.title, version: project.gameVersion, loader: project.loaders[0] || 'vanilla', banner: 5, profileId: null, imported: [], createdAt: Date.now(), lastPlayed: null }
         save('mock.instances', [...load('mock.instances'), inst])
@@ -125,7 +128,23 @@ function createMock() {
       }
     },
     onInstancesChanged: () => () => {},
-    game: { launch: desktopOnly, stop: async () => {}, repair: desktopOnly, totalMemory: async () => 16384, onStatus: () => () => {} },
+    game: {
+      launch: desktopOnly, stop: async () => {}, repair: desktopOnly, totalMemory: async () => 16384, onStatus: () => () => {},
+      log: async () => ({ running: false, fromFile: true, lines: [
+        { t: Date.now() - 9000, level: 'INFO', logger: 'FabricLoader', text: 'Loading Minecraft 1.21.1 with Fabric Loader 0.16.9' },
+        { t: Date.now() - 8000, level: 'WARN', logger: 'Sodium', text: 'Your GPU driver is out of date' },
+        { t: Date.now() - 7000, level: 'ERROR', logger: 'Minecraft', text: 'Failed to load texture\njava.io.FileNotFoundException: missing.png\n\tat net.minecraft.Texture.load(Texture.java:42)' },
+        { t: Date.now() - 6000, level: 'INFO', logger: 'Minecraft', text: 'Stopping!' }
+      ] }),
+      onLog: () => () => {}
+    },
+    worlds: {
+      list: async () => [
+        { name: 'Survie', title: 'Notre survie', gameType: 0, hardcore: false, version: '1.21.1', lastPlayed: Date.now() - 3600e3, size: 2.4e8, hasIcon: false, backups: [{ file: '2026-10-24_14-30-05-auto.zip', date: Date.now() - 7200e3, size: 1.9e8, auto: true }] },
+        { name: 'Creatif', title: 'Créatif', gameType: 1, hardcore: false, version: '1.21.1', lastPlayed: Date.now() - 86400e3 * 3, size: 3.1e7, hasIcon: false, backups: [] }
+      ],
+      backup: desktopOnly, restore: desktopOnly, trash: desktopOnly, trashBackup: desktopOnly, openFolder: desktopOnly, openBackups: desktopOnly, resolvePending: desktopOnly
+    },
     downloads: {
       list: async () => [...dl],
       clear: async () => { dl = dl.filter((t) => t.status === 'running'); dlEmit() },
@@ -173,6 +192,7 @@ function createMock() {
       toggleMod: async () => {},
       trashFile: async () => {},
       openSubfolder: desktopOnly,
+      openLogs: desktopOnly,
       duplicate: desktopOnly,
       exportZip: desktopOnly
     }

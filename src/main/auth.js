@@ -23,8 +23,11 @@ function save() {
   fs.writeFileSync(file, safeStorage.encryptString(JSON.stringify(accounts)))
 }
 
+// Mojang renvoie le skin en http://, que la CSP de l'interface bloque : textures.minecraft.net répond aussi en https
+const httpsSkin = (url) => url?.replace(/^http:\/\//i, 'https://') || null
+
 // Version sans jetons, pour l'interface
-const list = () => accounts.map(({ uuid, name, skin, active, addedAt }) => ({ uuid, name, skin, active, addedAt }))
+const list = () => accounts.map(({ uuid, name, skin, active, addedAt }) => ({ uuid, name, skin: httpsSkin(skin), active, addedAt }))
 
 const b64url = (buf) => buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 

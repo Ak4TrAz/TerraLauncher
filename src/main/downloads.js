@@ -11,7 +11,19 @@ let listener = () => {}
 let timer = null
 
 function onUpdate(fn) { listener = fn }
-function list() { return [...tasks.values()].sort((a, b) => b.startedAt - a.startedAt) }
+
+// Progression de 0 à 1, ou null tant que la taille totale est inconnue.
+// Elle ne recule jamais : si une étape ajoute des fichiers en cours de route, elle attend que le reste la rattrape.
+function progressOf(task) {
+  if (task.status === 'done') return 1
+  if (!task.total) return task.progress ?? null
+  task.progress = Math.max(task.progress || 0, Math.min(1, task.received / task.total))
+  return task.progress
+}
+
+function list() {
+  return [...tasks.values()].map((t) => ({ ...t, progress: progressOf(t) })).sort((a, b) => b.startedAt - a.startedAt)
+}
 
 // Regroupe les notifications (au plus 5 par seconde)
 function notify(now = false) {
@@ -25,17 +37,33 @@ function clearFinished() {
   notify(true)
 }
 
+// Empreinte SHA-1 lue par morceaux : vérifier des milliers de fichiers ne fige jamais l'application
 function sha1File(file) {
-  return crypto.createHash('sha1').update(fs.readFileSync(file)).digest('hex')
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash('sha1')
+    fs.createReadStream(file).on('data', (chunk) => hash.update(chunk)).on('error', reject).on('end', () => resolve(hash.digest('hex')))
+  })
+}
+
+// Fichier déjà présent et intact ? Renvoie sa taille, sinon null. Une taille différente évite de calculer l'empreinte.
+async function intactSize(dest, sha1, size) {
+  let st
+  try { st = await fs.promises.stat(dest) } catch { return null }
+  if (!st.isFile() || (size > 0 && st.size !== size)) return null
+  try { return (await sha1File(dest)) === sha1 ? st.size : null } catch { return null }
 }
 
 const STALL_MS = 30000
 
 // Télécharge url vers dest (2 essais) en mettant à jour la tâche ; vérifie le sha1 s'il est fourni.
-async function fetchToFile(task, url, dest, sha1) {
-  if (sha1 && fs.existsSync(dest) && sha1File(dest) === sha1) {
-    task.received += fs.statSync(dest).size
-    return
+async function fetchToFile(task, url, dest, sha1, size) {
+  if (sha1) {
+    const present = await intactSize(dest, sha1, size)
+    if (present !== null) {
+      task.received += present
+      notify()
+      return
+    }
   }
   const before = task.received
   try {
@@ -136,7 +164,7 @@ async function downloadFiles(task, files, concurrency = 6) {
       let lastError = null
       for (const url of urls) {
         try {
-          await fetchToFile(task, url, f.dest, f.sha1)
+          await fetchToFile(task, url, f.dest, f.sha1, f.size)
           lastError = null
           break
         } catch (err) {

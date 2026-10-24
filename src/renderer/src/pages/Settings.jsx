@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Settings as SettingsIcon, Coffee, Gamepad2, PlugZap, Palette, Play, Folder, Eye, Save, RotateCcw, Check, ExternalLink, FolderOpen } from 'lucide-react'
+import { Settings as SettingsIcon, Coffee, Gamepad2, PlugZap, Palette, Play, Folder, Eye, Save, RotateCcw, Check, ExternalLink, FolderOpen, Archive } from 'lucide-react'
 import { api } from '../api'
 import { Select } from '../components/ui'
 import Banner from '../components/Banner'
@@ -22,11 +22,11 @@ function Toggle({ on, onChange }) {
 function Section({ icon: Icon, title, subtitle, children }) {
   return (
     <div className="panel p-6">
-      <div className="mb-5 flex items-start gap-4 border-b border-bark-700/70 pb-4">
-        <Icon className="mt-1 h-7 w-7 text-cream" />
+      <div className={`mb-5 flex gap-4 border-b border-bark-700/70 pb-4 ${subtitle ? 'items-start' : 'items-center'}`}>
+        <Icon className={`h-7 w-7 text-cream ${subtitle ? 'mt-1' : ''}`} />
         <div>
           <h2 className="text-2xl font-bold">{title}</h2>
-          <p className="text-cream-muted">{subtitle}</p>
+          {subtitle && <p className="text-cream-muted">{subtitle}</p>}
         </div>
       </div>
       {children}
@@ -37,8 +37,8 @@ function Section({ icon: Icon, title, subtitle, children }) {
 function Setting({ title, desc, children }) {
   return (
     <div>
-      <div className="font-semibold">{title}</div>
-      <div className="mb-2 text-sm text-cream-muted">{desc}</div>
+      <div className={`font-semibold ${desc ? '' : 'mb-2'}`}>{title}</div>
+      {desc && <div className="mb-2 text-sm text-cream-muted">{desc}</div>}
       {children}
     </div>
   )
@@ -61,9 +61,9 @@ function AppVersion() {
 function Connections({ draft, set }) {
   return (
     <div className="space-y-5">
-      <Section icon={PlugZap} title="Microsoft / Minecraft" subtitle="Nécessaire pour se connecter avec un compte Minecraft Java.">
-        <div className="mb-4 flex items-center gap-3"><Status ok={!!draft.msClientId} okText="Client ID configuré" koText="Non configuré" /></div>
-        <Setting title="Client ID de l’application Azure" desc="Identifiant propre à TerraLauncher, créé une seule fois par toi.">
+      <Section icon={PlugZap} title="Microsoft / Minecraft">
+        <div className="mb-4 flex items-center gap-3"><Status ok={!!draft.msClientId || draft.hasMsClientId} okText={draft.msClientId ? 'Client ID configuré' : 'Client ID intégré utilisé'} koText="Non configuré" /></div>
+        <Setting title="Client ID de l’application Azure">
           <input className="input h-11 font-mono" placeholder="00000000-0000-0000-0000-000000000000" value={draft.msClientId || ''} onChange={(e) => set({ msClientId: e.target.value })} />
         </Setting>
         <ol className="mt-5 list-decimal space-y-2 pl-5 text-sm leading-relaxed text-cream-muted">
@@ -74,7 +74,7 @@ function Connections({ draft, set }) {
         </ol>
       </Section>
 
-      <Section icon={PlugZap} title="CurseForge" subtitle="Nécessaire pour chercher et installer depuis CurseForge.">
+      <Section icon={PlugZap} title="CurseForge">
         <div className="mb-4 flex items-center gap-3"><Status ok={draft.hasCurseforgeKey} okText="Clé enregistrée" koText="Non configurée" /></div>
         <Setting title="Clé d’API CurseForge" desc="Stockée chiffrée par Windows sur ce PC.">
           <input className="input h-11 font-mono" type="password" placeholder="$2a$10$…" value={draft.curseforgeKey || ''} onChange={(e) => set({ curseforgeKey: e.target.value })} />
@@ -82,7 +82,7 @@ function Connections({ draft, set }) {
         <p className="mt-4 text-sm text-cream-muted">Demande une clé sur la <Link href="https://console.curseforge.com/">console CurseForge pour développeurs</Link> (formulaire d’accès à l’API).</p>
       </Section>
 
-      <Section icon={PlugZap} title="Modrinth" subtitle="Catalogue ouvert : aucune clé n’est nécessaire.">
+      <Section icon={PlugZap} title="Modrinth">
         <Status ok okText="Prêt à l’emploi" />
       </Section>
     </div>
@@ -99,7 +99,7 @@ function JavaTab({ draft, set }) {
 
   return (
     <div className="space-y-5">
-      <Section icon={Coffee} title="Mémoire allouée" subtitle="Quantité de RAM donnée à Minecraft.">
+      <Section icon={Coffee} title="Mémoire allouée">
         <div className="mb-3 flex items-baseline justify-between">
           <span className="text-3xl font-bold text-ember-400">{gb(memory)}</span>
           <span className="text-sm text-cream-muted">{gb(total)} installés sur ce PC</span>
@@ -107,7 +107,7 @@ function JavaTab({ draft, set }) {
         <input type="range" min={1024} max={max} step={512} value={memory} onChange={(e) => set({ memory: Number(e.target.value) })} className="w-full accent-[#e46b1a]" />
         <p className="mt-3 text-sm text-cream-muted">Conseil : 4 Go en vanilla, 6 à 8 Go pour un gros modpack. Trop de RAM peut provoquer des saccades.</p>
       </Section>
-      <Section icon={Coffee} title="Java" subtitle="Installé automatiquement par TerraLauncher, dans la version exigée par chaque version de Minecraft.">
+      <Section icon={Coffee} title="Java" subtitle="Installé automatiquement par TerraLauncher.">
         <Setting title="Arguments Java supplémentaires" desc="Pour les utilisateurs avancés. Laisse vide si tu ne sais pas.">
           <input className="input h-11 font-mono" placeholder="-XX:+UseG1GC" value={draft.jvmArgs || ''} onChange={(e) => set({ jvmArgs: e.target.value })} />
         </Setting>
@@ -125,7 +125,7 @@ export default function Settings({ settings, onSaved, initialTab = 'general' }) 
   const set = (changes) => setDraft((d) => ({ ...d, ...changes }))
 
   const save = async () => {
-    const changes = { animations: draft.animations, startPage: draft.startPage, msClientId: draft.msClientId || '', memory: draft.memory, jvmArgs: draft.jvmArgs || '', gpu: draft.gpu !== false, minimizeOnLaunch: draft.minimizeOnLaunch !== false, serverAddress: (draft.serverAddress || '').trim() }
+    const changes = { animations: draft.animations, startPage: draft.startPage, msClientId: draft.msClientId || '', memory: draft.memory, jvmArgs: draft.jvmArgs || '', gpu: draft.gpu !== false, minimizeOnLaunch: draft.minimizeOnLaunch !== false, autoBackup: draft.autoBackup !== false, serverAddress: (draft.serverAddress || '').trim() }
     if (draft.curseforgeKey !== settings?.curseforgeKey) changes.curseforgeKey = draft.curseforgeKey || ''
     onSaved(await api.settings.update(changes))
   }
@@ -134,10 +134,7 @@ export default function Settings({ settings, onSaved, initialTab = 'general' }) 
     <div className="space-y-6">
       <div className="flex items-center gap-5">
         <SettingsIcon className="h-14 w-14 text-ember-500" strokeWidth={2.5} />
-        <div>
-          <h1 className="text-3xl font-extrabold xl:text-[38px] leading-tight tracking-tight">Paramètres</h1>
-          <p className="text-[17px] text-cream-muted">Personnalisez votre expérience TerraLauncher.</p>
-        </div>
+        <h1 className="text-3xl font-extrabold xl:text-[38px] leading-tight tracking-tight">Paramètres</h1>
       </div>
 
       <div className="flex gap-2 border-b border-bark-700">
@@ -151,12 +148,12 @@ export default function Settings({ settings, onSaved, initialTab = 'general' }) 
       {tab === 'general' && (
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_460px]">
           <div className="space-y-5">
-            <Section icon={Palette} title="Apparence" subtitle="Personnalisez l’interface de TerraLauncher.">
+            <Section icon={Palette} title="Apparence">
               <div className="grid grid-cols-3 gap-6">
-                <Setting title="Thème" desc="Choisissez le thème de l’application.">
+                <Setting title="Thème">
                   <Select className="h-11" value="autumn" onChange={() => {}} options={[{ value: 'autumn', label: 'Automne sombre' }]} />
                 </Setting>
-                <Setting title="Langue" desc="Langue de l’interface.">
+                <Setting title="Langue">
                   <Select className="h-11" value="fr" onChange={() => {}} options={[{ value: 'fr', label: 'Français' }]} />
                 </Setting>
                 <Setting title="Animations décoratives" desc="Afficher les feuilles d’automne (effet immédiat).">
@@ -164,12 +161,12 @@ export default function Settings({ settings, onSaved, initialTab = 'general' }) 
                 </Setting>
               </div>
             </Section>
-            <Section icon={Play} title="Au lancement" subtitle="Configurez le comportement de TerraLauncher au démarrage.">
-              <Setting title="Ouvrir la page" desc="Page affichée au démarrage de l’application.">
+            <Section icon={Play} title="Au lancement">
+              <Setting title="Ouvrir la page">
                 <Select className="h-11 max-w-sm" value={draft.startPage || 'library'} onChange={(v) => set({ startPage: v })} options={[{ value: 'library', label: 'Ma bibliothèque' }, { value: 'discover', label: 'Découvrir' }, { value: 'profiles', label: 'Profils' }]} />
               </Setting>
             </Section>
-            <Section icon={Folder} title="Dossiers" subtitle="Gérez les emplacements de vos données.">
+            <Section icon={Folder} title="Dossiers">
               <Setting title="Données de TerraLauncher" desc="Instances, profils, versions de Minecraft.">
                 <div className="flex gap-2">
                   <input className="input h-11 flex-1" readOnly value="%APPDATA%\.terralauncher" />
@@ -194,27 +191,35 @@ export default function Settings({ settings, onSaved, initialTab = 'general' }) 
 
       {tab === 'game' && (
         <div className="space-y-5">
-          <Section icon={Gamepad2} title="Carte graphique" subtitle="Choisissez la carte utilisée par Minecraft.">
+          <Section icon={Gamepad2} title="Carte graphique">
             <div className="flex items-center gap-6">
               <div className="flex-1">
                 <div className="font-semibold">Forcer la carte graphique haute performance</div>
-                <div className="text-sm text-cream-muted">Utilise la carte NVIDIA (ou AMD) dédiée au lieu de la puce Intel intégrée. Réglage Windows appliqué au Java du launcher.</div>
+                <div className="text-sm text-cream-muted">Carte NVIDIA ou AMD plutôt que la puce intégrée.</div>
               </div>
               <Toggle on={draft.gpu !== false} onChange={(v) => set({ gpu: v })} />
             </div>
           </Section>
-          <Section icon={Gamepad2} title="Serveur Terranova" subtitle="Utilisé par le bouton « Rejoindre Terranova » des instances.">
+          <Section icon={Gamepad2} title="Serveur Terranova">
             <Setting title="Adresse du serveur" desc="Ajoute « :port » si le serveur n’utilise pas le port 25565.">
               <input className="input h-11 max-w-md font-mono" placeholder="terranova.ist3rik.com" value={draft.serverAddress || ''} onChange={(e) => set({ serverAddress: e.target.value })} />
             </Setting>
           </Section>
-          <Section icon={Play} title="Au lancement du jeu" subtitle="Comportement de TerraLauncher quand Minecraft démarre.">
+          <Section icon={Play} title="Au lancement du jeu">
             <div className="flex items-center gap-6">
               <div className="flex-1">
                 <div className="font-semibold">Réduire le launcher</div>
-                <div className="text-sm text-cream-muted">La fenêtre du launcher se réduit quand le jeu est ouvert.</div>
               </div>
               <Toggle on={draft.minimizeOnLaunch !== false} onChange={(v) => set({ minimizeOnLaunch: v })} />
+            </div>
+          </Section>
+          <Section icon={Archive} title="Sauvegardes des mondes">
+            <div className="flex items-center gap-6">
+              <div className="flex-1">
+                <div className="font-semibold">Sauvegarder avant une mise à jour de mods</div>
+                <div className="text-sm text-cream-muted">Pour un changement de version de Minecraft, la question est posée à chaque fois.</div>
+              </div>
+              <Toggle on={draft.autoBackup !== false} onChange={(v) => set({ autoBackup: v })} />
             </div>
           </Section>
         </div>

@@ -21,18 +21,24 @@ const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('fr-FR', { day: 'nume
 function Description({ detail }) {
   const html = useMemo(() => {
     const raw = detail.bodyFormat === 'markdown' ? marked.parse(detail.body || '', { async: false }) : detail.body || ''
-    return DOMPurify.sanitize(raw, { FORBID_TAGS: ['style', 'iframe', 'form', 'input', 'button'], FORBID_ATTR: ['style', 'onerror', 'onload'] })
+    // Ni classes ni identifiants : la description ne peut pas imiter l'interface du launcher
+    return DOMPurify.sanitize(raw, {
+      FORBID_TAGS: ['style', 'iframe', 'form', 'input', 'button', 'map', 'area'],
+      FORBID_ATTR: ['style', 'onerror', 'onload', 'class', 'id', 'name'],
+      ALLOW_DATA_ATTR: false
+    })
   }, [detail])
 
-  // Les liens s'ouvrent dans le navigateur, jamais dans le launcher
+  // Les liens s'ouvrent dans le navigateur, jamais dans le launcher (clic gauche ou clic du milieu)
   const onClick = (e) => {
-    const a = e.target.closest('a')
-    if (!a) return
+    const a = e.target.closest('a, area')
+    if (!a || (e.type === 'auxclick' && e.button !== 1)) return
     e.preventDefault()
-    if (/^https:\/\//.test(a.href)) api.app.openExternal(a.href)
+    const href = typeof a.href === 'string' ? a.href : a.href?.baseVal // lien SVG
+    if (/^https:\/\//.test(href || '')) api.app.openExternal(href)
   }
 
-  return <div className="prose-terra panel select-text p-7" onClick={onClick} dangerouslySetInnerHTML={{ __html: html || '<p>Aucune description.</p>' }} />
+  return <div className="prose-terra panel select-text p-7" onClick={onClick} onAuxClick={onClick} dangerouslySetInnerHTML={{ __html: html || '<p>Aucune description.</p>' }} />
 }
 
 function Gallery({ detail, onOpen }) {

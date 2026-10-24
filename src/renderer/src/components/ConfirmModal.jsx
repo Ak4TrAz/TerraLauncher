@@ -13,7 +13,7 @@ export default function ConfirmModal({ confirm, onClose }) {
       footer={
         <>
           <button className="btn-ghost" onClick={onClose}>Annuler</button>
-          <button className="btn-danger" onClick={async () => { await confirm.onConfirm(); onClose() }}>{confirm?.action || 'Confirmer'}</button>
+          <button className="btn-danger" onClick={() => { const action = confirm.onConfirm; onClose(); action() }}>{confirm?.action || 'Confirmer'}</button>
         </>
       }
     >

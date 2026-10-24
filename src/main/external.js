@@ -4,6 +4,7 @@ const fs = require('fs')
 const path = require('path')
 const store = require('./store')
 const downloads = require('./downloads')
+const { checkVersion } = require('./paths')
 
 const readJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')) } catch { return null } }
 const subdirs = (dir) => { try { return fs.readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name) } catch { return [] } }
@@ -173,6 +174,8 @@ async function listFiles(dir, rel = '', top = true) {
 function importInstance({ launcher, name, dir, version, loader, loaderVersion, icon, playTime }, notifyInstances) {
   if (!fs.existsSync(dir)) throw new Error('Ce dossier n’existe plus.')
   if (!version) throw new Error('Choisis la version de Minecraft de cette instance.')
+  checkVersion(version, 'Version de Minecraft')
+  if (loaderVersion) checkVersion(loaderVersion, 'Version du chargeur')
   const inst = store.createInstance({ name, version, loader, banner: 5 })
   store.updateInstance(inst.id, { installing: true, importedFrom: dir, loaderVersion: loaderVersion || undefined, playTime: playTime || 0 })
   if (icon) try { store.setInstanceImage(inst.id, 'logo', icon) } catch {}

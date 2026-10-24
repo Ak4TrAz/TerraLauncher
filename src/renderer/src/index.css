@@ -74,3 +74,12 @@ body {
 .prose-terra th, .prose-terra td { border: 1px solid #49382b; padding: 0.4em 0.7em; text-align: left; }
 .prose-terra hr { border: 0; border-top: 1px solid #49382b; margin: 1.5em 0; }
 .prose-terra center, .prose-terra [align="center"] { text-align: center; }
+
+/* Travail en cours : barre qui défile sans fin (progression inconnue) et reflet sur une barre de progression */
+@keyframes working-slide { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+.working-bar { position: relative; overflow: hidden; }
+.working-bar::after { content: ''; position: absolute; inset: 0; width: 40%; background: linear-gradient(90deg, transparent, #f27a29, transparent); animation: working-slide 1.3s ease-in-out infinite; }
+@keyframes working-shine { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+.working-shine { position: relative; overflow: hidden; }
+.working-shine::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent); animation: working-shine 1.4s linear infinite; }
+
